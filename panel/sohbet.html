@@ -54,6 +54,8 @@ input,textarea{font-family:inherit;}
 .conv-prev{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
 .conv-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:2px;}
 .unread-badge{background:var(--accent);color:#000;font-size:11px;font-weight:800;border-radius:10px;min-width:19px;height:19px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+.unknown-sep{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;background:rgba(255,215,0,.06);border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:12.5px;color:var(--yellow);font-weight:700;}
+.unknown-sep:hover{background:rgba(255,215,0,.1);}
 .empty-hint{text-align:center;color:var(--muted);padding:30px 16px;font-size:13px;line-height:1.7;}
 
 .conv-pane{flex:1;display:flex;flex-direction:column;background:var(--bg);}
@@ -341,18 +343,10 @@ function avatarLetter(c) {
   return esc((c.phone || '?').slice(-2));
 }
 
-function renderConvList() {
-  const q = (document.getElementById('conv-search').value || '').trim().toLocaleLowerCase('tr');
-  const el = document.getElementById('conv-list');
-  let list = conversations;
-  if (q) list = list.filter(c => (c.name || '').toLocaleLowerCase('tr').includes(q) || c.phone.includes(q));
+let unknownSectionOpen = false;
 
-  if (!list.length) {
-    el.innerHTML = '<div class="empty-hint">Henüz sohbet yok.<br>➕ ile yeni sohbet başlatın veya Rehber\'den kişi ekleyin.</div>';
-    return;
-  }
-
-  el.innerHTML = list.map(c => `
+function convRowHtml(c) {
+  return `
     <div class="conv-item ${c.phone === activePhone ? 'active' : ''}" onclick="openConversation('${c.phone}')">
       <div class="avatar">${avatarLetter(c)}</div>
       <div class="conv-info">
@@ -365,7 +359,47 @@ function renderConvList() {
           ${c.unread > 0 ? `<span class="unread-badge">${c.unread}</span>` : ''}
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+}
+
+function toggleUnknownSection() {
+  unknownSectionOpen = !unknownSectionOpen;
+  renderConvList();
+}
+
+function renderConvList() {
+  const q = (document.getElementById('conv-search').value || '').trim().toLocaleLowerCase('tr');
+  const el = document.getElementById('conv-list');
+  let list = conversations;
+  if (q) list = list.filter(c => (c.name || '').toLocaleLowerCase('tr').includes(q) || c.phone.includes(q));
+
+  if (!list.length) {
+    el.innerHTML = conversations.length
+      ? '<div class="empty-hint">Sonuç bulunamadı.</div>'
+      : '<div class="empty-hint">Henüz sohbet yok.<br>➕ ile yeni sohbet başlatın veya Rehber\'den kişi ekleyin.</div>';
+    return;
+  }
+
+  // Rehbere kayıtlı olmayan numaralardan gelen mesajlar (ör. yanlış numara/istenmeyen içerik)
+  // ana listeyi karıştırmasın diye ayrı, varsayılan olarak kapalı bir bölümde toplanır — kayıp
+  // olmaz, okunmamış sayısı başlıkta görünür.
+  const known = list.filter(c => c.name);
+  const unknown = list.filter(c => !c.name);
+
+  let html = known.map(convRowHtml).join('');
+  if (unknown.length) {
+    const unreadTotal = unknown.reduce((s, c) => s + (c.unread || 0), 0);
+    html += `
+      <div class="unknown-sep" onclick="toggleUnknownSection()">
+        <span>⚠️ Bilinmeyen Gönderenler (${unknown.length})</span>
+        ${unreadTotal > 0 ? `<span class="unread-badge">${unreadTotal}</span>` : ''}
+        <span style="margin-left:auto;color:var(--muted)">${unknownSectionOpen ? '▾' : '▸'}</span>
+      </div>
+      <div id="unknown-list" style="display:${unknownSectionOpen ? 'block' : 'none'}">
+        ${unknown.map(convRowHtml).join('')}
+      </div>`;
+  }
+  el.innerHTML = html;
 }
 
 // ── KONUŞMA AÇ ───────────────────────────────────────────────────
