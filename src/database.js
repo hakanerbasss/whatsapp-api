@@ -230,6 +230,17 @@ function getConversations(customerId) {
     ORDER BY m.created_at DESC`, [customerId, customerId]);
 }
 
+// Sohbet listesi yalnızca gerçekten konuşulmuş (mesajlaşma geçmişi olan) ya da kullanıcının
+// bilerek açtığı (chat_reads'e düşmüş — bkz. markRead) kişileri gösterir; rehberdeki her kişi
+// otomatik "sohbet" sayılmaz, aksi halde toplu gönderim için eklenmiş yüzlerce kişi burada da
+// (hiç yazışılmamış halde) listelenirdi.
+function getConversationPhones(customerId) {
+  return all(`
+    SELECT contact_phone FROM messages WHERE customer_id=?
+    UNION
+    SELECT contact_phone FROM chat_reads WHERE customer_id=?`, [customerId, customerId]).map(r => r.contact_phone);
+}
+
 function markRead(customerId, phone) {
   const last = get('SELECT MAX(id) as m FROM messages WHERE customer_id=? AND contact_phone=?', [customerId, phone])?.m || 0;
   run(`INSERT INTO chat_reads (customer_id,contact_phone,last_read_id) VALUES (?,?,?)
@@ -245,4 +256,4 @@ function getUnreadCounts(customerId) {
     GROUP BY m.contact_phone`, [customerId]);
 }
 
-module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, markRead, getUnreadCounts };
+module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts };

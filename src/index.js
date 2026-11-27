@@ -834,25 +834,22 @@ function guessTypeFromMime(mime) {
 }
 
 app.get('/api/chat/conversations', customerAuth, (req, res) => {
+  const phones = db.getConversationPhones(req.customer.id);
   const convs = db.getConversations(req.customer.id);
   const contacts = db.getContacts(req.customer.id);
   const unread = db.getUnreadCounts(req.customer.id);
   const nameMap = {}; contacts.forEach(c => { nameMap[c.phone] = c.name; });
+  const lastMap = {}; convs.forEach(c => { lastMap[c.contact_phone] = c; });
   const unreadMap = {}; unread.forEach(u => { unreadMap[u.contact_phone] = u.unread; });
 
-  const seen = new Set();
-  const list = [];
-  convs.forEach(c => {
-    seen.add(c.contact_phone);
-    list.push({
-      phone: c.contact_phone, name: nameMap[c.contact_phone] || null,
-      last_type: c.message_type, last_body: c.body, last_direction: c.direction,
-      last_status: c.status, last_at: c.created_at, unread: unreadMap[c.contact_phone] || 0
-    });
-  });
-  contacts.forEach(c => {
-    if (seen.has(c.phone)) return;
-    list.push({ phone: c.phone, name: c.name, last_type: null, last_body: null, last_direction: null, last_status: null, last_at: null, unread: 0 });
+  const list = phones.map(phone => {
+    const last = lastMap[phone];
+    return {
+      phone, name: nameMap[phone] || null,
+      last_type: last ? last.message_type : null, last_body: last ? last.body : null,
+      last_direction: last ? last.direction : null, last_status: last ? last.status : null,
+      last_at: last ? last.created_at : null, unread: unreadMap[phone] || 0
+    };
   });
   list.sort((a, b) => {
     if (!a.last_at && !b.last_at) return (a.name || '').localeCompare(b.name || '');

@@ -77,6 +77,14 @@ else
   ok "pm2 $(pm2 -v) mevcut"
 fi
 
+if ! command -v ffmpeg &>/dev/null; then
+  info "ffmpeg kuruluyor (sesli mesajları WhatsApp'ın anlayacağı formata çevirmek için)..."
+  apt-get update -y -q > /dev/null 2>&1 && apt-get install -y -q ffmpeg > /dev/null 2>&1
+  ok "ffmpeg kuruldu"
+else
+  ok "ffmpeg mevcut"
+fi
+
 # ── 3) Bağımlılıklar + Baileys yaması ────────────────────────────────────────
 cd "$DEST"
 info "Paketler yükleniyor (1-2 dakika)..."

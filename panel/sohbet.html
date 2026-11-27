@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="/icons/icon.svg">
 <style>
 :root{--bg:#0a0e14;--surface:#0f1419;--card:#111820;--border:#1e2733;--accent:#25D366;--accent2:#00d4ff;--red:#ff4444;--yellow:#ffd700;--text:#e8f4f8;--muted:#4a6070;--bubble-out:rgba(37,211,102,.16);--bubble-in:#161e28;}
-[data-theme="light"]{--bg:#f0f4f8;--surface:#ffffff;--card:#ffffff;--border:#dde3ea;--accent:#25D366;--accent2:#0088cc;--red:#dc3545;--yellow:#f59e0b;--text:#1a2332;--muted:#6b7280;--bubble-out:#d9fdd3;--bubble-in:#ffffff;}
+[data-theme="light"]{--bg:#e6ebf0;--surface:#ffffff;--card:#ffffff;--border:#c7d0da;--accent:#1fa851;--accent2:#0077b3;--red:#dc3545;--yellow:#f59e0b;--text:#101820;--muted:#54606c;--bubble-out:#cdf5c6;--bubble-in:#ffffff;}
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;}
 button{font-family:inherit;}
@@ -184,6 +184,7 @@ let msgPollTimer = null;
 let listPollTimer = null;
 let nearBottom = true;
 let mediaRecorder = null, recordChunks = [], recordInterval = null, recSecs = 0;
+let isRecording = false, recordedBlob = null, recordedMimetype = null;
 let pendingFile = null;
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -281,7 +282,7 @@ function esc(s) { const d = document.createElement('div'); d.textContent = s || 
 
 function previewText(c) {
   if (!c.last_at) return 'Henüz mesaj yok — yazmaya başlayın';
-  const prefix = c.last_direction === 'out' ? '✓ ' : '';
+  const prefix = c.last_direction !== 'out' ? '' : c.last_status === 'failed' ? '⚠ ' : c.last_status === 'read' ? '✓✓ ' : c.last_status === 'delivered' ? '✓✓ ' : '✓ ';
   const icons = { image: '📷 Fotoğraf', video: '🎬 Video', audio: '🎤 Sesli mesaj', document: '📄 Belge', location: '📍 Konum', contact: '👤 Kişi', sticker: '🌟 Çıkartma' };
   const bodyEsc = esc(c.last_body || '');
   if (c.last_type && icons[c.last_type]) return prefix + icons[c.last_type] + (bodyEsc ? ' — ' + bodyEsc : '');
@@ -321,7 +322,7 @@ function renderConvList() {
 }
 
 // ── KONUŞMA AÇ ───────────────────────────────────────────────────
-function openConversation(phone) {
+async function openConversation(phone) {
   const conv = conversations.find(c => c.phone === phone);
   const name = conv ? conv.name : null;
   activePhone = phone;
@@ -346,9 +347,11 @@ function openConversation(phone) {
     <div id="attach-preview-slot"></div>
     <div class="input-bar" id="input-bar">
       <textarea id="msg-input" rows="1" placeholder="Mesaj yazın..." oninput="onInputChange()" onkeydown="onInputKeydown(event)"></textarea>
-      <input type="file" id="file-input" style="display:none" accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" onchange="onFileSelect(this)">
-      <button class="round-btn ghost" id="attach-btn" onclick="document.getElementById('file-input').click()" title="Ekle">📎</button>
-      <button class="round-btn" id="send-btn" onclick="sendCurrent()" title="Gönder">🎙</button>
+      <input type="file" id="photo-input" style="display:none" accept="image/*,video/*" onchange="onFileSelect(this)">
+      <input type="file" id="file-input" style="display:none" accept="application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip" onchange="onFileSelect(this)">
+      <button class="round-btn ghost" onclick="document.getElementById('photo-input').click()" title="Fotoğraf/Video">🖼</button>
+      <button class="round-btn ghost" id="attach-btn" onclick="document.getElementById('file-input').click()" title="Belge">📎</button>
+      <button class="round-btn" id="send-btn" title="Basılı tutup konuşun, bırakınca gönderin" onclick="onSendClick()" onpointerdown="onSendPointerDown(event)" style="touch-action:none;user-select:none">🎙</button>
     </div>`;
 
   document.getElementById('msgs').addEventListener('scroll', () => {
@@ -356,9 +359,12 @@ function openConversation(phone) {
     nearBottom = (m.scrollHeight - m.scrollTop - m.clientHeight) < 80;
   });
 
-  renderConvList();
+  renderConvList(); // mevcut (belki bayat) listeyle hemen tepki ver
   loadHistory();
-  api('/api/chat/' + phone + '/read', { method: 'POST' });
+  await api('/api/chat/' + phone + '/read', { method: 'POST' });
+  // Yeni açılan bir sohbet sunucuda chat_reads'e düşünce listede hemen görünsün diye tazele —
+  // aksi halde bir sonraki 4sn'lik otomatik yenilemeye kadar sol listede boş görünürdü.
+  await loadConversations();
   msgPollTimer = setInterval(pollMessages, 2500);
 }
 
@@ -471,8 +477,9 @@ function onFileSelect(input) {
   pendingFile = file;
   const slot = document.getElementById('attach-preview-slot');
   const isImg = file.type.startsWith('image/');
+  const isVideo = file.type.startsWith('video/');
   slot.innerHTML = `<div class="attach-preview">
-    ${isImg ? `<img src="${URL.createObjectURL(file)}">` : '📄'}
+    ${isImg ? `<img src="${URL.createObjectURL(file)}">` : isVideo ? '🎬' : '📄'}
     <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${file.name}</span>
     <button class="icon-btn" onclick="cancelAttach()">✕</button>
   </div>`;
@@ -482,15 +489,23 @@ function onFileSelect(input) {
 function cancelAttach() {
   pendingFile = null;
   document.getElementById('attach-preview-slot').innerHTML = '';
-  document.getElementById('file-input').value = '';
+  const fileInput = document.getElementById('file-input');
+  const photoInput = document.getElementById('photo-input');
+  if (fileInput) fileInput.value = '';
+  if (photoInput) photoInput.value = '';
   onInputChange();
+}
+
+function onSendClick() {
+  const text = document.getElementById('msg-input').value.trim();
+  if (text || pendingFile) sendCurrent();
+  // Boşken tek dokunuş hiçbir şey yapmaz — sesli mesaj yalnızca basılı tutarak kaydedilir.
 }
 
 async function sendCurrent() {
   const btn = document.getElementById('send-btn');
   const text = document.getElementById('msg-input').value.trim();
-
-  if (!text && !pendingFile) { toggleRecord(); return; }
+  if (!text && !pendingFile) return;
 
   btn.disabled = true;
   try {
@@ -518,38 +533,54 @@ async function sendCurrent() {
   btn.disabled = false;
 }
 
-// ── SESLİ MESAJ ──────────────────────────────────────────────────
-async function toggleRecord() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); return; }
+// ── SESLİ MESAJ — basılı tutunca kaydeder, bırakınca gönder/sil seçimi çıkar ──
+function pickRecorderMimeType() {
+  const candidates = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+  for (const c of candidates) { if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c; }
+  return '';
+}
+
+function onSendPointerDown(e) {
+  const text = document.getElementById('msg-input').value.trim();
+  if (text || pendingFile) return; // dolu giriş varken normal gönder tıklaması çalışsın
+  e.preventDefault();
+  startRecording();
+  // Kayıt başlarken giriş çubuğunun içeriği (bu düğme dahil) değiştiriliyor, bu yüzden bırakma
+  // olayını düğmeye değil document'e bağlıyoruz — aksi halde düğme DOM'dan kalkınca pointerup
+  // hiç tetiklenmiyor ve kayıt asla durmuyordu.
+  const stopOnce = (ev) => {
+    document.removeEventListener('pointerup', stopOnce);
+    document.removeEventListener('pointercancel', stopOnce);
+    if (isRecording) stopRecordingToPreview();
+  };
+  document.addEventListener('pointerup', stopOnce);
+  document.addEventListener('pointercancel', stopOnce);
+}
+
+async function startRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') return;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     recordChunks = [];
-    mediaRecorder = new MediaRecorder(stream);
+    const mimeType = pickRecorderMimeType();
+    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recordedMimetype = mediaRecorder.mimeType || mimeType || 'audio/webm';
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordChunks.push(e.data); };
-    mediaRecorder.onstop = async () => {
+    mediaRecorder.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
       clearInterval(recordInterval);
-      restoreInputBar();
-      const blob = new Blob(recordChunks, { type: 'audio/ogg; codecs=opus' });
-      if (blob.size < 500) return; // çok kısa / iptal
-      const fd = new FormData();
-      fd.append('file', blob, 'ses-kaydi.ogg');
-      fd.append('ptt', 'true');
-      const r = await fetch('/api/chat/' + activePhone + '/send', { method: 'POST', headers: { 'x-api-token': currentToken }, body: fd });
-      const data = await r.json();
-      if (!data.ok) { alert('❌ ' + (data.error || 'Gönderilemedi')); return; }
-      renderBubble(data.message);
-      lastMsgId = Math.max(lastMsgId, data.message.id);
-      document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
-      loadConversations();
+      const blob = new Blob(recordChunks, { type: recordedMimetype });
+      if (blob.size < 800) { restoreInputBar(); return; } // çok kısa/yanlışlıkla basılmış
+      recordedBlob = blob;
+      showRecordConfirm();
     };
     mediaRecorder.start();
+    isRecording = true;
     recSecs = 0;
     const bar = document.getElementById('input-bar');
     bar.innerHTML = `
       <div class="rec-ui">🔴 Kaydediliyor... <span id="rec-timer">0:00</span></div>
-      <button class="round-btn ghost" onclick="cancelRecord()" title="İptal">✕</button>
-      <button class="round-btn rec" onclick="toggleRecord()" title="Gönder">➤</button>`;
+      <div style="font-size:11px;color:var(--muted);white-space:nowrap">Bırakınca durur</div>`;
     recordInterval = setInterval(() => {
       recSecs++;
       const timerEl = document.getElementById('rec-timer');
@@ -560,11 +591,43 @@ async function toggleRecord() {
   }
 }
 
-function cancelRecord() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    recordChunks = [];
-    mediaRecorder.onstop = () => { mediaRecorder.stream?.getTracks().forEach(t => t.stop()); clearInterval(recordInterval); restoreInputBar(); };
-    mediaRecorder.stop();
+function stopRecordingToPreview() {
+  isRecording = false;
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+}
+
+function showRecordConfirm() {
+  const bar = document.getElementById('input-bar');
+  const url = URL.createObjectURL(recordedBlob);
+  bar.innerHTML = `
+    <button class="round-btn ghost" onclick="discardRecording()" title="Sil">🗑</button>
+    <audio controls src="${url}" style="flex:1;height:40px;min-width:0"></audio>
+    <button class="round-btn" onclick="sendRecording()" title="Gönder">➤</button>`;
+}
+
+function discardRecording() {
+  recordedBlob = null;
+  restoreInputBar();
+}
+
+async function sendRecording() {
+  if (!recordedBlob) return;
+  const blob = recordedBlob;
+  const ext = recordedMimetype.includes('ogg') ? 'ogg' : recordedMimetype.includes('mp4') ? 'm4a' : 'webm';
+  restoreInputBar();
+  try {
+    const fd = new FormData();
+    fd.append('file', blob, 'ses-kaydi.' + ext);
+    fd.append('ptt', 'true');
+    const r = await fetch('/api/chat/' + activePhone + '/send', { method: 'POST', headers: { 'x-api-token': currentToken }, body: fd });
+    const data = await r.json();
+    if (!data.ok) { alert('❌ ' + (data.error || 'Gönderilemedi')); return; }
+    renderBubble(data.message);
+    lastMsgId = Math.max(lastMsgId, data.message.id);
+    document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
+    loadConversations();
+  } catch(e) {
+    alert('❌ Gönderme hatası: ' + e.message);
   }
 }
 
@@ -573,9 +636,13 @@ function restoreInputBar() {
   if (!bar) return;
   bar.innerHTML = `
     <textarea id="msg-input" rows="1" placeholder="Mesaj yazın..." oninput="onInputChange()" onkeydown="onInputKeydown(event)"></textarea>
-    <input type="file" id="file-input" style="display:none" accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" onchange="onFileSelect(this)">
-    <button class="round-btn ghost" id="attach-btn" onclick="document.getElementById('file-input').click()" title="Ekle">📎</button>
-    <button class="round-btn" id="send-btn" onclick="sendCurrent()" title="Gönder">🎙</button>`;
+    <input type="file" id="photo-input" style="display:none" accept="image/*,video/*" onchange="onFileSelect(this)">
+    <input type="file" id="file-input" style="display:none" accept="application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip" onchange="onFileSelect(this)">
+    <button class="round-btn ghost" onclick="document.getElementById('photo-input').click()" title="Fotoğraf/Video">🖼</button>
+    <button class="round-btn ghost" id="attach-btn" onclick="document.getElementById('file-input').click()" title="Belge">📎</button>
+    <button class="round-btn" id="send-btn" title="Basılı tutup konuşun, bırakınca gönderin" onclick="onSendClick()" onpointerdown="onSendPointerDown(event)" style="touch-action:none;user-select:none">🎙</button>`;
+  recordedBlob = null;
+  onInputChange();
 }
 
 // ── YENİ SOHBET / KİŞİ EKLE ──────────────────────────────────────

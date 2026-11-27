@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
+const { spawn } = require('child_process');
 const QRCode = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./database');
@@ -47,6 +48,27 @@ function saveMediaBuffer(customerId, buffer, mimetype, fallbackName) {
   const filename = `${uuidv4()}.${extFromMime(mimetype, fallbackName)}`;
   fs.writeFileSync(path.join(dir, filename), buffer);
   return filename;
+}
+
+// Tarayıcının MediaRecorder'ı sesli mesajı WEBM/Opus kabında kaydeder, WhatsApp'ın sesli mesaj
+// (ptt) olarak OYNATABİLMESİ için gerçek bir OGG/Opus kabı ister — aksi halde mesaj ya hiç
+// gitmez ya da karşı tarafta çalmaz. Burada yalnızca kap değişiyor, ses yeniden kodlanıyor
+// (libopus) çünkü tarayıcı/cihaza göre girdi kodek/kap kombinasyonu değişebiliyor.
+function webmToOggOpus(buffer) {
+  return new Promise((resolve, reject) => {
+    const ff = spawn('ffmpeg', ['-i', 'pipe:0', '-vn', '-c:a', 'libopus', '-b:a', '32k', '-f', 'ogg', 'pipe:1']);
+    const chunks = [];
+    let stderr = '';
+    ff.stdout.on('data', d => chunks.push(d));
+    ff.stderr.on('data', d => { stderr += d; });
+    ff.on('error', reject);
+    ff.on('close', code => {
+      if (code === 0 && chunks.length) resolve(Buffer.concat(chunks));
+      else reject(new Error(`ffmpeg çıkış kodu ${code}: ${stderr.slice(-300)}`));
+    });
+    ff.stdin.write(buffer);
+    ff.stdin.end();
+  });
 }
 
 function fireWebhook(webhookUrl, payload) {
@@ -245,23 +267,40 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
     });
   });
 
+  function applyMessageStatus(key, status) {
+    const phone = normalizePhone(key.remoteJid?.replace('@s.whatsapp.net', ''));
+    db.updateMessageStatusByWaId(customerId, key.id, status);
+    waEvents.emit(`chat_${customerId}_${phone}`, { event: 'status', wa_message_id: key.id, status });
+
+    const customer = db.getCustomerById(customerId);
+    if (!customer?.webhook_url) return;
+    fireWebhook(customer.webhook_url, {
+      event: 'message_status',
+      customer_id: customerId,
+      message_id: key.id,
+      to: phone,
+      status
+    });
+  }
+
+  // Grup/toplu yayın teslim-okundu bilgisi — Baileys bunu YALNIZCA grup/durum sohbetleri için yayınlar.
   sock.ev.on('message-receipt.update', updates => {
     updates.forEach(({ key, receipt }) => {
       const status = receipt?.readTimestamp ? 'read'
         : receipt?.receiptTimestamp ? 'delivered' : 'sent';
-      const phone = normalizePhone(key.remoteJid?.replace('@s.whatsapp.net', ''));
-      db.updateMessageStatusByWaId(customerId, key.id, status);
-      waEvents.emit(`chat_${customerId}_${phone}`, { event: 'status', wa_message_id: key.id, status });
+      applyMessageStatus(key, status);
+    });
+  });
 
-      const customer = db.getCustomerById(customerId);
-      if (!customer?.webhook_url) return;
-      fireWebhook(customer.webhook_url, {
-        event: 'message_status',
-        customer_id: customerId,
-        message_id: key.id,
-        to: phone,
-        status
-      });
+  // Birebir (grup olmayan) sohbetlerde teslim/okundu bilgisi message-receipt.update ile DEĞİL,
+  // buradan gelir (proto.WebMessageInfo.Status: 2=SERVER_ACK/gönderildi, 3=DELIVERY_ACK/teslim
+  // edildi, 4=READ/okundu, 5=PLAYED/dinlendi) — Sohbet ekranındaki ✓/✓✓ tikleri bu olaya bağlı.
+  sock.ev.on('messages.update', updates => {
+    updates.forEach(({ key, update }) => {
+      if (typeof update.status !== 'number' || !key.fromMe) return;
+      const statusMap = { 0: 'failed', 2: 'sent', 3: 'delivered', 4: 'read', 5: 'read' };
+      const status = statusMap[update.status];
+      if (status) applyMessageStatus(key, status);
     });
   });
 
@@ -291,6 +330,9 @@ async function sendChatMessage(customerId, to, opts) {
   const phone = normalizePhone(to);
 
   let content;
+  let finalBuffer = mediaBuffer;
+  let finalMimetype = mediaMimetype;
+
   if (type === 'text') {
     content = { text: text || '' };
   } else if (type === 'image') {
@@ -298,7 +340,20 @@ async function sendChatMessage(customerId, to, opts) {
   } else if (type === 'video') {
     content = { video: mediaBuffer, caption: text || '' };
   } else if (type === 'audio') {
-    content = { audio: mediaBuffer, mimetype: mediaMimetype || 'audio/ogg; codecs=opus', ptt: !!ptt };
+    let finalPtt = !!ptt;
+    // Sesli mesaj (ptt) olarak gönderilecekse WhatsApp gerçek OGG/Opus bekler — tarayıcının
+    // ürettiği WEBM'i öyleymiş gibi işaretlemek (yalnızca mimetype yazmak) çalışmaz, mesaj ya
+    // gitmez ya da karşı tarafta oynatılamaz. Gerekirse burada gerçekten dönüştürüyoruz.
+    if (finalPtt && finalMimetype && !finalMimetype.includes('ogg')) {
+      try {
+        finalBuffer = await webmToOggOpus(mediaBuffer);
+        finalMimetype = 'audio/ogg; codecs=opus';
+      } catch (e) {
+        console.error(`⚠️  Sesli mesaj OGG'ye dönüştürülemedi (müşteri ${customerId}), normal ses dosyası olarak gönderiliyor:`, e.message);
+        finalPtt = false; // ffmpeg yoksa/başarısızsa ptt:true + yanlış kap WhatsApp'ta sessiz kalır
+      }
+    }
+    content = { audio: finalBuffer, mimetype: finalMimetype || 'audio/ogg; codecs=opus', ptt: finalPtt };
   } else if (type === 'document') {
     content = { document: mediaBuffer, fileName: filename || 'dosya', mimetype: mediaMimetype || 'application/octet-stream' };
   } else {
@@ -307,9 +362,9 @@ async function sendChatMessage(customerId, to, opts) {
 
   const result = await sendMessage(customerId, phone, content);
   const waMessageId = result?.key?.id || null;
-  const mediaPath = mediaBuffer ? saveMediaBuffer(customerId, mediaBuffer, mediaMimetype, filename) : null;
+  const mediaPath = finalBuffer ? saveMediaBuffer(customerId, finalBuffer, finalMimetype, filename) : null;
 
-  return db.addMessage(customerId, phone, 'out', type, text || null, mediaPath, mediaMimetype || null, waMessageId, 'sent');
+  return db.addMessage(customerId, phone, 'out', type, text || null, mediaPath, finalMimetype || null, waMessageId, 'sent');
 }
 
 async function disconnectCustomer(customerId) {
