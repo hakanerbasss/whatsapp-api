@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toplu Mesaj — WhatsApp API</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#25D366">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="WA Panel">
+<link rel="apple-touch-icon" href="/icons/icon.svg">
+<style>
+:root{--bg:#0a0e14;--surface:#0f1419;--card:#111820;--border:#1e2733;--accent:#25D366;--accent2:#00d4ff;--red:#ff4444;--yellow:#ffd700;--text:#e8f4f8;--muted:#4a6070;}
+[data-theme="light"]{--bg:#f0f4f8;--surface:#ffffff;--card:#ffffff;--border:#dde3ea;--accent:#25D366;--accent2:#0088cc;--red:#dc3545;--yellow:#f59e0b;--text:#1a2332;--muted:#6b7280;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;min-height:100vh;}
+.wrap{max-width:600px;margin:0 auto;padding:16px 16px 80px;}
+.header{display:flex;align-items:center;gap:10px;padding:14px 0 20px;}
+.header h1{font-size:20px;font-weight:800;}
+.back-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:18px;text-decoration:none;transition:all .2s;}
+.back-btn:hover{border-color:var(--accent);color:var(--accent);}
+.icon-btn{width:36px;height:36px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:15px;display:inline-flex;align-items:center;justify-content:center;transition:all .2s;}
+.icon-btn:hover{border-color:var(--accent2);color:var(--accent2);}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;}
+.card-title{font-size:11px;color:var(--accent2);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px;}
+input,select,textarea{width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;transition:border-color .2s;-webkit-appearance:none;}
+input[type="checkbox"]{width:auto;background:none;border:none;padding:0;border-radius:0;-webkit-appearance:checkbox;appearance:checkbox;}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+.field{margin-bottom:10px;}
+.btn{padding:9px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;display:inline-flex;align-items:center;gap:6px;}
+.btn-primary{background:var(--accent);color:#000;}
+.btn-ghost{background:var(--surface);color:var(--muted);border:1px solid var(--border);}
+.btn-ghost:hover{color:var(--text);}
+.btn-danger{background:rgba(255,68,68,.15);color:var(--red);border:1px solid rgba(255,68,68,.3);}
+.btn-full{width:100%;justify-content:center;padding:12px;}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+/* Rehber */
+.contact-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;}
+.contact-check{width:18px;height:18px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;-webkit-appearance:checkbox;appearance:checkbox;}
+.contact-info{flex:1;min-width:0;}
+.contact-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.contact-phone{font-size:11px;color:var(--muted);font-family:monospace;}
+.contact-del{color:var(--red);background:none;border:none;cursor:pointer;font-size:16px;padding:2px 6px;}
+/* Mesaj tipi */
+.type-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;}
+.type-btn{padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;font-size:13px;text-align:center;transition:all .2s;}
+.type-btn.active{background:rgba(37,211,102,.15);color:var(--accent);border-color:var(--accent);}
+/* Upload */
+.upload-area{border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:border-color .2s;}
+.upload-area:hover{border-color:var(--accent);}
+.upload-area.has-file{border-color:var(--accent);background:rgba(37,211,102,.05);}
+/* Progress */
+.progress-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(30,39,51,.5);font-size:12px;}
+.progress-item:last-child{border-bottom:none;}
+/* Token giriş */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;}
+.login-box{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:32px;width:100%;max-width:380px;text-align:center;}
+/* Tabs */
+.tabs{display:flex;gap:4px;margin-bottom:12px;background:var(--surface);border-radius:8px;padding:4px;}
+.tab{flex:1;padding:7px;border-radius:6px;border:none;background:none;color:var(--muted);cursor:pointer;font-size:13px;transition:all .2s;}
+.tab.active{background:var(--card);color:var(--text);font-weight:600;}
+.loc-type-btn{flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;}
+.loc-type-btn.active{background:rgba(37,211,102,.15);color:var(--accent);border-color:var(--accent);}
+.loc-type-btn.live.active{background:rgba(255,68,68,.15);color:var(--red);border-color:var(--red);}
+</style>
+</head>
+<body>
+
+<!-- Token Giriş -->
+<div id="login-wrap" class="login-wrap" style="display:none">
+  <div class="login-box">
+    <div style="font-size:48px;margin-bottom:12px">📤</div>
+    <h2 style="margin-bottom:6px">Toplu Mesaj</h2>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:20px">API Token ile giriş yapın</p>
+    <input type="text" id="login-token" placeholder="Token...">
+    <button onclick="loginWithToken()" style="width:100%;margin-top:8px;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:700;cursor:pointer">Giriş</button>
+    <div id="login-err" style="color:var(--red);font-size:12px;margin-top:8px"></div>
+  </div>
+</div>
+
+<!-- Ana Uygulama -->
+<div id="app" style="display:none">
+  <div class="wrap">
+    <div class="header">
+      <a href="/musteri" id="back-link" class="back-btn" title="Geri">←</a>
+      <h1>📤 Toplu Mesaj</h1>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--muted)" id="header-info"></span>
+        <button class="icon-btn" id="theme-btn" onclick="toggleTheme()" title="Tema">🌙</button>
+      </div>
+    </div>
+
+    <!-- Mesaj Bölümü -->
+    <div class="card">
+      <div class="card-title">Mesaj</div>
+      <div class="type-btns">
+        <div class="type-btn active" onclick="setType('text',this)">📝 Metin</div>
+        <div class="type-btn" onclick="setType('image',this)">🖼 Resim</div>
+        <div class="type-btn" onclick="setType('video',this)">🎬 Video</div>
+        <div class="type-btn" onclick="setType('document',this)">📄 Dosya</div>
+        <div class="type-btn" onclick="setType('audio',this)">🔊 Ses</div>
+        <div class="type-btn" onclick="setType('location',this)">📍 Konum</div>
+      </div>
+
+      <!-- Metin -->
+      <div id="type-text">
+        <div class="field">
+          <label>Mesaj *</label>
+          <textarea id="msg-text" rows="4" placeholder="Mesajınızı yazın...&#10;&#10;{isim} yazarsanız kişi adı ile değiştirilir"></textarea>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">💡 {isim} → kişinin adı ile değiştirilir</div>
+      </div>
+
+      <!-- Resim -->
+      <div id="type-image" style="display:none">
+        <div class="tabs" style="margin-bottom:10px">
+          <button class="tab active" onclick="setImgTab('gallery',this)">🖼 Galeri</button>
+          <button class="tab" onclick="setImgTab('camera',this)">📷 Fotoğraf Çek</button>
+        </div>
+
+        <!-- Galeri -->
+        <div id="img-tab-gallery">
+          <div class="field">
+            <div class="upload-area" id="img-upload-area" onclick="document.getElementById('img-file').click()">
+              <div style="font-size:32px;margin-bottom:8px">🖼</div>
+              <div style="font-size:13px;color:var(--muted)">Galeriden seç veya tıkla</div>
+              <input type="file" id="img-file" accept="image/*" style="display:none" onchange="onFileSelect('img')">
+            </div>
+            <div id="img-preview" style="margin-top:8px"></div>
+          </div>
+        </div>
+
+        <!-- Kamera -->
+        <div id="img-tab-camera" style="display:none">
+          <div style="text-align:center">
+            <video id="cam-video" autoplay playsinline style="width:100%;border-radius:10px;background:#000;display:none;max-height:260px;object-fit:cover"></video>
+            <canvas id="cam-canvas" style="display:none"></canvas>
+            <div id="cam-preview" style="margin-top:8px"></div>
+            <div style="display:flex;justify-content:center;gap:10px;margin-top:10px">
+              <button id="cam-start-btn" onclick="startCamera()" style="padding:10px 20px;border-radius:50px;border:none;background:var(--accent2);color:#000;font-size:13px;font-weight:700;cursor:pointer">📷 Kamerayı Aç</button>
+              <button id="cam-snap-btn" onclick="snapPhoto()" style="display:none;padding:10px 20px;border-radius:50px;border:none;background:var(--accent);color:#000;font-size:13px;font-weight:700;cursor:pointer">⚡ Çek</button>
+              <button id="cam-retry-btn" onclick="retryCamera()" style="display:none;padding:10px 20px;border-radius:50px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;cursor:pointer">🔄 Yeniden Çek</button>
+            </div>
+            <div id="cam-status" style="font-size:11px;color:var(--muted);margin-top:8px">Fotoğraf çekmek için kamerayı açın</div>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:10px">
+          <label>Açıklama (opsiyonel)</label>
+          <input type="text" id="img-caption" placeholder="Resim açıklaması...">
+        </div>
+      </div>
+
+      <!-- Video -->
+      <div id="type-video" style="display:none">
+        <div class="field">
+          <label>Video Seç</label>
+          <div class="upload-area" id="vid-upload-area" onclick="document.getElementById('vid-file').click()">
+            <div style="font-size:32px;margin-bottom:8px">🎬</div>
+            <div style="font-size:13px;color:var(--muted)">Video seç (max 20MB)</div>
+            <input type="file" id="vid-file" accept="video/*" style="display:none" onchange="onFileSelect('vid')">
+          </div>
+          <div id="vid-preview" style="margin-top:8px"></div>
+        </div>
+        <div class="field">
+          <label>Açıklama (opsiyonel)</label>
+          <input type="text" id="vid-caption" placeholder="Video açıklaması...">
+        </div>
+      </div>
+
+      <!-- Dosya -->
+      <div id="type-document" style="display:none">
+        <div class="field">
+          <label>Dosya Seç</label>
+          <div class="upload-area" id="doc-upload-area" onclick="document.getElementById('doc-file').click()">
+            <div style="font-size:32px;margin-bottom:8px">📄</div>
+            <div style="font-size:13px;color:var(--muted)">Dosya seç (PDF, Excel, Word...)</div>
+            <input type="file" id="doc-file" style="display:none" onchange="onFileSelect('doc')">
+          </div>
+          <div id="doc-preview" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+      <!-- Ses -->
+      <div id="type-audio" style="display:none">
+        <div class="tabs" style="margin-bottom:10px">
+          <button class="tab active" onclick="setAudioTab('url',this)">🔗 URL</button>
+          <button class="tab" onclick="setAudioTab('file',this)">📁 Dosya</button>
+          <button class="tab" onclick="setAudioTab('record',this)">🎙 Kaydet</button>
+        </div>
+
+        <!-- URL -->
+        <div id="audio-tab-url">
+          <div class="field">
+            <label>Ses Dosyası URL *</label>
+            <input type="url" id="audio-url" placeholder="https://orneksite.com/ses.mp3">
+          </div>
+          <div style="font-size:11px;color:var(--muted)">💡 MP3, OGG, AAC formatları. URL halka açık olmalı.</div>
+        </div>
+
+        <!-- Dosya -->
+        <div id="audio-tab-file" style="display:none">
+          <div class="field">
+            <div class="upload-area" id="audio-upload-area" onclick="document.getElementById('audio-file').click()">
+              <div style="font-size:32px;margin-bottom:8px">🔊</div>
+              <div style="font-size:13px;color:var(--muted)">Ses dosyası seç (MP3, OGG, AAC, WAV)</div>
+              <input type="file" id="audio-file" accept="audio/*" style="display:none" onchange="onAudioFileSelect()">
+            </div>
+            <div id="audio-file-preview" style="margin-top:8px"></div>
+          </div>
+        </div>
+
+        <!-- Kaydet -->
+        <div id="audio-tab-record" style="display:none">
+          <div style="text-align:center;padding:16px 0">
+            <div id="rec-status" style="font-size:13px;color:var(--muted);margin-bottom:12px">Kayda başlamak için butona bas</div>
+            <div id="rec-timer" style="font-size:28px;font-weight:800;color:var(--accent);margin-bottom:12px;display:none">0:00</div>
+            <div style="display:flex;justify-content:center;gap:10px">
+              <button id="rec-btn" onclick="toggleRecord()" style="padding:12px 24px;border-radius:50px;border:none;background:var(--accent);color:#000;font-size:14px;font-weight:700;cursor:pointer">
+                🎙 Kaydet
+              </button>
+              <button id="rec-stop-btn" onclick="stopRecord()" style="display:none;padding:12px 24px;border-radius:50px;border:none;background:var(--red);color:#fff;font-size:14px;font-weight:700;cursor:pointer">
+                ⏹ Durdur
+              </button>
+            </div>
+            <div id="rec-preview" style="margin-top:12px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Konum -->
+      <div id="type-location" style="display:none">
+        <!-- Arama -->
+        <div style="position:relative;margin-bottom:8px">
+          <input type="text" id="loc-search" placeholder="🔍 Adres veya yer ara..." oninput="clearSearchTimeout()" onkeyup="searchLocDebounce()">
+          <div id="loc-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:8px;z-index:9999;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.4)"></div>
+        </div>
+
+        <!-- Harita -->
+        <div style="position:relative">
+          <div id="leaflet-map" style="height:280px;border-radius:10px;overflow:hidden;border:1px solid var(--border)"></div>
+          <button id="gps-map-btn" onclick="goToMyLocation()" style="position:absolute;bottom:10px;right:10px;z-index:999;padding:8px 14px;border-radius:50px;border:none;background:rgba(15,20,25,.85);color:var(--accent2);font-size:12px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px)">📡 Konumuma Git</button>
+        </div>
+        <div id="map-selected" style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;min-height:16px">Haritaya tıklayın veya adres arayın</div>
+
+        <!-- Konum Adı / Adres -->
+        <div style="margin-top:10px">
+          <div class="field"><label>Konum Adı (opsiyonel)</label><input type="text" id="loc-name" placeholder="Örn: Ofisimiz"></div>
+          <div class="field"><label>Adres (opsiyonel)</label><input type="text" id="loc-address" placeholder="Örn: Levent, İstanbul"></div>
+          <input type="hidden" id="loc-lat">
+          <input type="hidden" id="loc-lng">
+          <div id="loc-coords" style="font-size:11px;color:var(--muted);text-align:center"></div>
+        </div>
+
+        <!-- Normal / Canlı seçim -->
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="loc-type-btn active" onclick="setLocType('normal',this)">📍 Normal Konum</button>
+          <button class="loc-type-btn live" onclick="setLocType('live',this)">🔴 Canlı Konum</button>
+        </div>
+        <div id="live-opts" style="display:none;margin-top:10px">
+          <div style="font-size:11px;color:var(--yellow);background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:8px;margin-bottom:8px">⚠️ Alıcıda canlı konum olarak görünür — gönderildikten sonra güncellenmez</div>
+          <label>Süre</label>
+          <select id="live-duration">
+            <option value="900">15 Dakika</option>
+            <option value="3600" selected>1 Saat</option>
+            <option value="28800">8 Saat</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rehber -->
+    <div class="card">
+      <div class="card-title">Rehber</div>
+      <div class="tabs">
+        <button class="tab active" onclick="showTab('contacts',this)">👥 Kişiler</button>
+        <button class="tab" onclick="showTab('add',this)">➕ Ekle</button>
+        <button class="tab" onclick="showTab('import',this)">📥 İmport</button>
+      </div>
+
+      <!-- Kişiler Listesi -->
+      <div id="tab-contacts">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:12px;color:var(--muted)" id="contact-count">0 kişi</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost" style="padding:5px 10px;font-size:11px" onclick="selectAll()">Tümünü Seç</button>
+            <button class="btn btn-ghost" style="padding:5px 10px;font-size:11px" onclick="selectNone()">Seçimi Kaldır</button>
+          </div>
+        </div>
+        <div id="contact-list" style="max-height:300px;overflow-y:auto">
+          <div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Rehber boş. Kişi ekleyin.</div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="exportContacts()">💾 Rehberi İndir</button>
+          <button class="btn btn-danger" style="font-size:11px" onclick="clearContacts()">🗑 Temizle</button>
+        </div>
+      </div>
+
+      <!-- Kişi Ekle -->
+      <div id="tab-add" style="display:none">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">📥 Google rehberinizi indirmek için: <a href="https://contacts.google.com" target="_blank" style="color:var(--accent)">contacts.google.com</a> → Dışa Aktar → CSV</div>
+          <div class="field"><label>Ad Soyad *</label><input type="text" id="add-name" placeholder="Ahmet Yılmaz"></div>
+        <div class="field"><label>Telefon * (905551234567)</label><input type="tel" id="add-phone" placeholder="905551234567"></div>
+        <button class="btn btn-primary btn-full" onclick="addContact()">➕ Ekle</button>
+        <div id="add-result" style="margin-top:8px;font-size:12px"></div>
+      </div>
+
+      <!-- Import -->
+      <div id="tab-import" style="display:none">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.7">
+          <strong style="color:var(--text)">CSV formatı:</strong><br>
+          isim,telefon<br>
+          Ahmet Yılmaz,905551234567<br>
+          Mehmet Kaya,905559876543
+        </div>
+        <div class="field">
+          <label>CSV veya JSON dosya seç</label>
+          <input type="file" id="import-file" accept=".csv,.json,text/csv,text/plain,*/*" onchange="importContacts(this)">
+        </div>
+        <div id="import-result" style="margin-top:8px;font-size:12px"></div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <label style="margin-bottom:6px;display:block">Veya JSON yapıştır</label>
+          <textarea id="import-json" rows="4" placeholder='[{"isim":"Ahmet","telefon":"905551234567"}]'></textarea>
+          <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="importFromText()">İçe Aktar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gönderim Ayarları -->
+    <div class="card">
+      <div class="card-title">Gönderim Ayarları</div>
+      <div class="field">
+        <label>Mesajlar arası bekleme (ms)</label>
+        <select id="send-delay">
+          
+          <option value="3000" selected>3 saniye (Minimum — önerilen)</option>
+          <option value="5000">5 saniye (Güvenli)</option>
+          <option value="10000">10 saniye (Çok güvenli)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Gönder Butonu -->
+    <button class="btn btn-primary btn-full" id="send-btn" onclick="startSending()" style="font-size:15px;padding:14px">
+      📤 Toplu Gönder
+    </button>
+
+    <!-- İlerleme -->
+    <div id="progress-card" class="card" style="display:none;margin-top:12px">
+      <div class="card-title">Gönderim Durumu</div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px">
+        <span id="prog-text">0 / 0</span>
+        <span id="prog-pct">0%</span>
+      </div>
+      <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:12px">
+        <div id="prog-bar" style="height:100%;background:var(--accent);border-radius:4px;width:0%;transition:width .3s"></div>
+      </div>
+      <div id="prog-log" style="max-height:200px;overflow-y:auto"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function copyToClipboard(text){if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(text).catch(()=>fallbackCopy(text));}else{fallbackCopy(text);}}function fallbackCopy(text){var el=document.createElement("textarea");el.value=text;el.style.position="fixed";el.style.opacity="0";document.body.appendChild(el);el.focus();el.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(el);}
+let currentToken = '';
+let contacts = [];
+let msgType = 'text';
+let selectedFile = null;
+let imgMode = 'gallery';
+let camBlob = null;
+let camStream = null;
+let audioMode = 'url';
+let audioFileBlob = null;
+let audioFileName = '';
+let audioRecordBlob = null;
+let mediaRecorder = null;
+let recordChunks = [];
+let recordInterval = null;
+let locMode = 'normal';
+let leafletMap = null, leafletMarker = null;
+let searchTimer = null;
+
+// ── KONUM ────────────────────────────────────────────────────────
+function setLocType(type, el) {
+  locMode = type;
+  document.querySelectorAll('.loc-type-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('live-opts').style.display = type === 'live' ? 'block' : 'none';
+}
+
+function initLeaflet() {
+  if (leafletMap) { leafletMap.invalidateSize(); return; }
+  leafletMap = L.map('leaflet-map', { zoomControl: true }).setView([39.9, 32.8], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM' }).addTo(leafletMap);
+  leafletMap.on('click', (e) => setMapCoords(e.latlng.lat, e.latlng.lng));
+  // Açılışta GPS konumuna git
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(pos => {
+      leafletMap.setView([pos.coords.latitude, pos.coords.longitude], 15);
+    }, () => {}, { timeout: 6000 });
+  }
+}
+
+function goToMyLocation() {
+  const btn = document.getElementById('gps-map-btn');
+  btn.textContent = '⏳ Alınıyor...';
+  btn.disabled = true;
+  navigator.geolocation.getCurrentPosition(pos => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    leafletMap.setView([lat, lng], 16);
+    setMapCoords(lat, lng, 'Mevcut Konumum');
+    btn.textContent = '📡 Konumuma Git';
+    btn.disabled = false;
+  }, err => {
+    btn.textContent = '❌ Alınamadı';
+    setTimeout(() => { btn.textContent = '📡 Konumuma Git'; btn.disabled = false; }, 2000);
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+function setMapCoords(lat, lng, label) {
+  lat = parseFloat(lat).toFixed(6); lng = parseFloat(lng).toFixed(6);
+  document.getElementById('loc-lat').value = lat;
+  document.getElementById('loc-lng').value = lng;
+  document.getElementById('loc-coords').textContent = `📍 ${lat}, ${lng}`;
+  const sel = document.getElementById('map-selected');
+  sel.textContent = label || `📍 ${lat}, ${lng}`;
+  sel.style.color = 'var(--accent)';
+  if (leafletMarker) leafletMap.removeLayer(leafletMarker);
+  leafletMarker = L.marker([lat, lng]).addTo(leafletMap);
+  if (!label) leafletMap.setView([lat, lng], 15);
+}
+
+function clearSearchTimeout() { clearTimeout(searchTimer); }
+
+function searchLocDebounce() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(searchLocation, 600);
+}
+
+async function searchLocation() {
+  const q = document.getElementById('loc-search').value.trim();
+  const resEl = document.getElementById('loc-search-results');
+  if (q.length < 3) { resEl.style.display = 'none'; return; }
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&accept-language=tr`);
+    const results = await r.json();
+    if (!results.length) { resEl.style.display = 'none'; return; }
+    resEl.style.display = 'block';
+    resEl.innerHTML = results.map(res => `
+      <div onclick="selectSearchResult(${res.lat},${res.lon},${JSON.stringify(res.display_name.substring(0,60))})"
+        style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:12px;line-height:1.5"
+        onmouseover="this.style.background='rgba(255,255,255,.05)'" onmouseout="this.style.background=''">
+        📍 ${res.display_name.substring(0,80)}
+      </div>`).join('');
+  } catch(e) {}
+}
+
+function selectSearchResult(lat, lng, label) {
+  document.getElementById('loc-search').value = label;
+  document.getElementById('loc-search-results').style.display = 'none';
+  setMapCoords(lat, lng, label);
+  leafletMap.setView([lat, lng], 15);
+}
+
+// ── BAŞLANGIÇ ────────────────────────────────────────────────────
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const next = isDark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  document.getElementById('theme-btn').textContent = next === 'light' ? '☀️' : '🌙';
+  localStorage.setItem('theme', next);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  const btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = savedTheme === 'light' ? '☀️' : '🌙';
+
+  const urlToken = new URLSearchParams(window.location.search).get('token');
+  const savedToken = localStorage.getItem('wa_customer_token');
+  const token = urlToken || savedToken;
+  if (token) {
+    currentToken = token;
+    document.getElementById('back-link').href = '/musteri?token=' + token;
+    document.getElementById('app').style.display = 'block';
+    loadContacts();
+    checkWaStatus();
+  } else {
+    document.getElementById('login-wrap').style.display = 'flex';
+  }
+});
+
+async function loginWithToken() {
+  const token = document.getElementById('login-token').value.trim();
+  if (!token) return;
+  const r = await fetch('/api/status', { headers: { 'x-api-token': token } });
+  const data = await r.json();
+  if (data.error) { document.getElementById('login-err').textContent = '❌ Geçersiz token'; return; }
+  currentToken = token;
+  localStorage.setItem('wa_customer_token', token);
+  document.getElementById('login-wrap').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('back-link').href = '/musteri?token=' + token;
+  loadContacts();
+  checkWaStatus();
+}
+
+async function checkWaStatus() {
+  const r = await fetch('/api/status', { headers: { 'x-api-token': currentToken } });
+  const data = await r.json();
+  const el = document.getElementById('header-info');
+  if (data.wa_status === 'connected') {
+    el.innerHTML = `<span style="color:var(--accent)">🟢 ${data.wa_number||'Bağlı'}</span>`;
+  } else {
+    el.innerHTML = `<span style="color:var(--red)">⚪ Bağlı Değil</span>`;
+  }
+}
+
+// ── KAMERA ───────────────────────────────────────────────────────
+function setImgTab(mode, el) {
+  imgMode = mode;
+  ['gallery','camera'].forEach(t => {
+    document.getElementById('img-tab-' + t).style.display = t === mode ? 'block' : 'none';
+  });
+  document.querySelectorAll('#type-image .tab').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  if (mode !== 'camera' && camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+}
+
+async function startCamera() {
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    const video = document.getElementById('cam-video');
+    video.srcObject = camStream;
+    video.style.display = 'block';
+    document.getElementById('cam-start-btn').style.display = 'none';
+    document.getElementById('cam-snap-btn').style.display = 'inline-block';
+    document.getElementById('cam-status').textContent = 'Kamera hazır — çekmek için ⚡ Çek butonuna bas';
+  } catch(e) {
+    document.getElementById('cam-status').textContent = '❌ Kamera erişimi reddedildi';
+    document.getElementById('cam-status').style.color = 'var(--red)';
+  }
+}
+
+function snapPhoto() {
+  const video = document.getElementById('cam-video');
+  const canvas = document.getElementById('cam-canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  canvas.toBlob(blob => {
+    camBlob = blob;
+    const url = URL.createObjectURL(blob);
+    document.getElementById('cam-preview').innerHTML = `<img src="${url}" style="width:100%;border-radius:8px;max-height:200px;object-fit:cover">`;
+    document.getElementById('cam-status').textContent = `✅ Fotoğraf çekildi (${(blob.size/1024).toFixed(0)}KB)`;
+    document.getElementById('cam-status').style.color = 'var(--accent)';
+    document.getElementById('cam-snap-btn').style.display = 'none';
+    document.getElementById('cam-retry-btn').style.display = 'inline-block';
+    video.style.display = 'none';
+    if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  }, 'image/jpeg', 0.9);
+}
+
+function retryCamera() {
+  camBlob = null;
+  document.getElementById('cam-preview').innerHTML = '';
+  document.getElementById('cam-retry-btn').style.display = 'none';
+  document.getElementById('cam-start-btn').style.display = 'inline-block';
+  document.getElementById('cam-status').textContent = 'Fotoğraf çekmek için kamerayı açın';
+  document.getElementById('cam-status').style.color = 'var(--muted)';
+  document.getElementById('cam-video').style.display = 'none';
+}
+
+// ── SES SEKME & KAYIT ────────────────────────────────────────────
+function setAudioTab(mode, el) {
+  audioMode = mode;
+  ['url','file','record'].forEach(t => {
+    document.getElementById('audio-tab-' + t).style.display = t === mode ? 'block' : 'none';
+  });
+  document.querySelectorAll('#type-audio .tab').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function onAudioFileSelect() {
+  const input = document.getElementById('audio-file');
+  const file = input.files[0];
+  if (!file) return;
+  audioFileBlob = file;
+  audioFileName = file.name;
+  const area = document.getElementById('audio-upload-area');
+  area.classList.add('has-file');
+  const preview = document.getElementById('audio-file-preview');
+  const url = URL.createObjectURL(file);
+  preview.innerHTML = `<audio controls style="width:100%;margin-top:4px"><source src="${url}"></audio><div style="font-size:11px;color:var(--accent);margin-top:4px">✅ ${file.name} (${(file.size/1024).toFixed(0)}KB)</div>`;
+}
+
+async function toggleRecord() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordChunks = [];
+    audioRecordBlob = null;
+    document.getElementById('rec-preview').innerHTML = '';
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      audioRecordBlob = new Blob(recordChunks, { type: 'audio/ogg; codecs=opus' });
+      const url = URL.createObjectURL(audioRecordBlob);
+      document.getElementById('rec-preview').innerHTML = `<audio controls style="width:100%;margin-top:8px"><source src="${url}"></audio><div style="font-size:11px;color:var(--accent);margin-top:4px">✅ Kayıt hazır (${(audioRecordBlob.size/1024).toFixed(0)}KB)</div>`;
+      document.getElementById('rec-status').textContent = 'Kayıt tamamlandı. Göndermek için Toplu Gönder\'e bas.';
+      document.getElementById('rec-status').style.color = 'var(--accent)';
+      clearInterval(recordInterval);
+      document.getElementById('rec-timer').style.display = 'none';
+      document.getElementById('rec-btn').style.display = 'inline-block';
+      document.getElementById('rec-stop-btn').style.display = 'none';
+    };
+    mediaRecorder.start();
+    let secs = 0;
+    document.getElementById('rec-timer').style.display = 'block';
+    document.getElementById('rec-btn').style.display = 'none';
+    document.getElementById('rec-stop-btn').style.display = 'inline-block';
+    document.getElementById('rec-status').textContent = 'Kaydediliyor...';
+    document.getElementById('rec-status').style.color = 'var(--red)';
+    recordInterval = setInterval(() => {
+      secs++;
+      const m = Math.floor(secs/60), s = secs%60;
+      document.getElementById('rec-timer').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+    }, 1000);
+  } catch(e) {
+    document.getElementById('rec-status').textContent = '❌ Mikrofon erişimi reddedildi';
+    document.getElementById('rec-status').style.color = 'var(--red)';
+  }
+}
+
+function stopRecord() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+}
+
+// ── MESAJ TİPİ ───────────────────────────────────────────────────
+function setType(type, el) {
+  msgType = type;
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  ['text','image','video','document','audio','location'].forEach(t => {
+    document.getElementById('type-' + t).style.display = t === type ? 'block' : 'none';
+  });
+  selectedFile = null;
+  if (type === 'location') setTimeout(initLeaflet, 150);
+}
+
+function onFileSelect(prefix) {
+  const input = document.getElementById(prefix + '-file');
+  const file = input.files[0];
+  if (!file) return;
+  selectedFile = file;
+  const area = document.getElementById(prefix + '-upload-area');
+  const preview = document.getElementById(prefix + '-preview');
+  area.classList.add('has-file');
+
+  if (file.type.startsWith('image/')) {
+    const url = URL.createObjectURL(file);
+    preview.innerHTML = `<img src="${url}" style="max-width:100%;border-radius:8px;max-height:150px">`;
+  } else {
+    preview.innerHTML = `<div style="font-size:12px;color:var(--accent)">✅ ${file.name} (${(file.size/1024).toFixed(0)}KB)</div>`;
+  }
+}
+
+// ── REHBER ───────────────────────────────────────────────────────
+function loadContacts() {
+  try { contacts = JSON.parse(localStorage.getItem('wa_contacts') || '[]'); }
+  catch(e) { contacts = []; }
+  renderContacts();
+}
+
+function saveContacts() {
+  localStorage.setItem('wa_contacts', JSON.stringify(contacts));
+}
+
+function renderContacts() {
+  const el = document.getElementById('contact-list');
+  const countEl = document.getElementById('contact-count');
+  const selected = contacts.filter(c => c.selected).length;
+  countEl.textContent = `${contacts.length} kişi · ${selected} seçili`;
+
+  if (!contacts.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Rehber boş. Kişi ekleyin.</div>';
+    return;
+  }
+
+  el.innerHTML = contacts.map((c, i) => `
+    <div class="contact-item">
+      <input type="checkbox" class="contact-check" ${c.selected ? 'checked' : ''} onchange="toggleContact(${i},this.checked)">
+      <div class="contact-info">
+        <div class="contact-name">${c.name}</div>
+        <div class="contact-phone">${c.phone}</div>
+      </div>
+      <button class="contact-del" onclick="deleteContact(${i})">×</button>
+    </div>`).join('');
+}
+
+function toggleContact(i, checked) {
+  contacts[i].selected = checked;
+  saveContacts();
+  renderContacts();
+}
+
+function selectAll() { contacts.forEach(c => c.selected = true); saveContacts(); renderContacts(); }
+function selectNone() { contacts.forEach(c => c.selected = false); saveContacts(); renderContacts(); }
+
+function deleteContact(i) {
+  contacts.splice(i, 1);
+  saveContacts();
+  renderContacts();
+}
+
+function clearContacts() {
+  if (!confirm('Tüm rehber silinsin mi?')) return;
+  contacts = [];
+  saveContacts();
+  renderContacts();
+}
+
+function addContact() {
+  const name = document.getElementById('add-name').value.trim();
+  const phone = document.getElementById('add-phone').value.trim().replace(/\D/g,'');
+  const el = document.getElementById('add-result');
+
+  if (!name || !phone) { el.innerHTML = '<span style="color:var(--red)">Ad ve telefon gerekli</span>'; return; }
+  if (contacts.find(c => c.phone === phone)) { el.innerHTML = '<span style="color:var(--red)">Bu numara zaten ekli</span>'; return; }
+
+  contacts.push({ name, phone, selected: true });
+  saveContacts();
+  document.getElementById('add-name').value = '';
+  document.getElementById('add-phone').value = '';
+  el.innerHTML = '<span style="color:var(--accent)">✅ Eklendi!</span>';
+  setTimeout(() => el.innerHTML = '', 2000);
+  renderContacts();
+}
+
+function importContacts(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    let added = 0;
+    if (file.name.endsWith('.json')) {
+      try {
+        const data = JSON.parse(text);
+        data.forEach(row => {
+          const name = row.isim || row.name || row.ad || '';
+          const phone = (row.telefon || row.phone || row.tel || '').toString().replace(/\D/g,'');
+          if (name && phone && !contacts.find(c => c.phone === phone)) {
+            contacts.push({ name, phone, selected: true });
+            added++;
+          }
+        });
+      } catch(e) {}
+    } else {
+      // CSV - Google ve standart format destegi
+      const lines = text.split('\n');
+      const header = lines[0].toLowerCase();
+      const isGoogle = header.includes('first name') || header.includes('phone 1');
+      
+      // Sutun indexlerini bul
+      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,'').toLowerCase());
+      const firstIdx = headers.indexOf('first name');
+      const lastIdx = headers.indexOf('last name');
+      const nameIdx = headers.indexOf('isim') !== -1 ? headers.indexOf('isim') : headers.indexOf('name');
+      const phoneIdx = (() => {
+        for (let i = 0; i < headers.length; i++) {
+          if (headers[i].includes('phone 1 - value') || headers[i] === 'telefon' || headers[i] === 'phone' || headers[i] === 'tel') return i;
+        }
+        return -1;
+      })();
+
+      lines.slice(1).forEach(line => {
+        if (!line.trim()) return;
+        // Virgülle bölme - tırnak içindeki virgülleri koru
+        const parts = [];
+        let current = '';
+        let inQuote = false;
+        for (const ch of line) {
+          if (ch === '"') inQuote = !inQuote;
+          else if (ch === ',' && !inQuote) { parts.push(current); current = ''; }
+          else current += ch;
+        }
+        parts.push(current);
+
+        let name = '';
+        let phone = '';
+
+        if (isGoogle && firstIdx !== -1) {
+          const first = (parts[firstIdx] || '').trim().replace(/"/g,'');
+          const last = lastIdx !== -1 ? (parts[lastIdx] || '').trim().replace(/"/g,'') : '';
+          name = (first + ' ' + last).trim();
+        } else if (nameIdx !== -1) {
+          name = (parts[nameIdx] || '').trim().replace(/"/g,'');
+        } else {
+          name = (parts[0] || '').trim().replace(/"/g,'');
+        }
+
+        if (phoneIdx !== -1) {
+          phone = (parts[phoneIdx] || '').trim().replace(/"/g,'');
+        } else {
+          phone = (parts[1] || '').trim();
+        }
+
+        // Telefon formatla: +90 542 280 22 19 -> 905422802219
+        phone = phone.replace(/[^0-9]/g,'');
+        if (phone.startsWith('90') && phone.length >= 11) {
+          // zaten dogru
+        } else if (phone.startsWith('0') && phone.length === 11) {
+          phone = '9' + phone;
+        } else if (phone.length === 10) {
+          phone = '90' + phone;
+        }
+
+        if (name && phone && phone.length >= 10 && !contacts.find(c => c.phone === phone)) {
+          contacts.push({ name, phone, selected: true });
+          added++;
+        }
+      });
+    }
+    saveContacts();
+    renderContacts();
+    document.getElementById('import-result').innerHTML = `<span style="color:var(--accent)">✅ ${added} kişi eklendi</span>`;
+  };
+  reader.readAsText(file);
+}
+
+function importFromText() {
+  const text = document.getElementById('import-json').value.trim();
+  if (!text) return;
+  try {
+    const data = JSON.parse(text);
+    let added = 0;
+    data.forEach(row => {
+      const name = row.isim || row.name || row.ad || '';
+      const phone = (row.telefon || row.phone || row.tel || '').toString().replace(/\D/g,'');
+      if (name && phone && !contacts.find(c => c.phone === phone)) {
+        contacts.push({ name, phone, selected: true });
+        added++;
+      }
+    });
+    saveContacts();
+    renderContacts();
+    document.getElementById('import-result').innerHTML = `<span style="color:var(--accent)">✅ ${added} kişi eklendi</span>`;
+  } catch(e) {
+    document.getElementById('import-result').innerHTML = '<span style="color:var(--red)">❌ Geçersiz JSON</span>';
+  }
+}
+
+function exportContacts() {
+  const json = JSON.stringify(contacts.map(c => ({ isim: c.name, telefon: c.phone })), null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'rehber.json'; a.click();
+}
+
+// ── TAB ──────────────────────────────────────────────────────────
+function showTab(tab, el) {
+  ['contacts','add','import'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === tab ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// ── GÖNDER ───────────────────────────────────────────────────────
+async function startSending() {
+  const selected = contacts.filter(c => c.selected);
+  if (!selected.length) { alert('En az bir kişi seçin'); return; }
+
+  const delay = parseInt(document.getElementById('send-delay').value);
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Gönderiliyor...';
+
+  const progCard = document.getElementById('progress-card');
+  progCard.style.display = 'block';
+  progCard.scrollIntoView({ behavior: 'smooth' });
+
+  let success = 0, fail = 0;
+  const log = document.getElementById('prog-log');
+  log.innerHTML = '';
+
+  for (let i = 0; i < selected.length; i++) {
+    const contact = selected[i];
+    const pct = Math.round((i / selected.length) * 100);
+    document.getElementById('prog-text').textContent = `${i} / ${selected.length}`;
+    document.getElementById('prog-pct').textContent = pct + '%';
+    document.getElementById('prog-bar').style.width = pct + '%';
+
+    try {
+      if (msgType === 'text') {
+        const text = document.getElementById('msg-text').value.replace('{isim}', contact.name);
+        if (!text) throw new Error('Mesaj boş');
+        const r = await fetch('/api/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-token': currentToken },
+          body: JSON.stringify({ to: contact.phone, message: text })
+        });
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.error);
+      } else if (msgType === 'audio') {
+        if (audioMode === 'url') {
+          const url = document.getElementById('audio-url').value.trim();
+          if (!url) throw new Error('Ses URL gerekli');
+          const r = await fetch('/api/send/audio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-token': currentToken },
+            body: JSON.stringify({ to: contact.phone, url })
+          });
+          const data = await r.json();
+          if (!data.ok) throw new Error(data.error);
+        } else {
+          const blob = audioMode === 'file' ? audioFileBlob : audioRecordBlob;
+          if (!blob) throw new Error(audioMode === 'file' ? 'Dosya seçilmedi' : 'Ses kaydedilmedi');
+          const fd = new FormData();
+          fd.append('file', blob, audioMode === 'file' ? (audioFileName || 'ses.mp3') : 'kayit.ogg');
+          fd.append('to', contact.phone);
+          const r = await fetch('/api/send/media', {
+            method: 'POST',
+            headers: { 'x-api-token': currentToken },
+            body: fd
+          });
+          const data = await r.json();
+          if (!data.ok) throw new Error(data.error);
+        }
+      } else if (msgType === 'location') {
+        const lat = document.getElementById('loc-lat').value;
+        const lng = document.getElementById('loc-lng').value;
+        const name = document.getElementById('loc-name').value.trim();
+        const address = document.getElementById('loc-address').value.trim();
+        if (!lat || !lng) throw new Error(locMode === 'live' ? 'Önce "Konumumu Al ve Hazırla" butonuna bas' : 'Konum seçilmedi');
+        const endpoint = locMode === 'live' ? '/api/send/live-location' : '/api/send/location';
+        const body = { to: contact.phone, latitude: parseFloat(lat), longitude: parseFloat(lng), name, address };
+        if (locMode === 'live') body.duration_seconds = parseInt(document.getElementById('live-duration').value);
+        const r = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-token': currentToken },
+          body: JSON.stringify(body)
+        });
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.error);
+      } else {
+        const fileBlob = (msgType === 'image' && imgMode === 'camera') ? camBlob : selectedFile;
+        if (!fileBlob) throw new Error(msgType === 'image' && imgMode === 'camera' ? 'Fotoğraf çekilmedi' : 'Dosya seçilmedi');
+        const fd = new FormData();
+        fd.append('file', fileBlob, msgType === 'image' && imgMode === 'camera' ? 'foto.jpg' : (selectedFile?.name || 'dosya'));
+        fd.append('to', contact.phone);
+        const caption = document.getElementById(msgType === 'image' ? 'img-caption' : 'vid-caption')?.value || '';
+        if (caption) fd.append('caption', caption);
+        const r = await fetch('/api/send/media', {
+          method: 'POST',
+          headers: { 'x-api-token': currentToken },
+          body: fd
+        });
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.error);
+      }
+
+      success++;
+      log.innerHTML += `<div class="progress-item"><span style="color:var(--accent)">✅</span><span>${contact.name}</span><span style="color:var(--muted);margin-left:auto">${contact.phone}</span></div>`;
+    } catch(e) {
+      fail++;
+      log.innerHTML += `<div class="progress-item"><span style="color:var(--red)">❌</span><span>${contact.name}</span><span style="color:var(--red);margin-left:auto;font-size:11px">${e.message}</span></div>`;
+    }
+
+    log.scrollTop = log.scrollHeight;
+    if (i < selected.length - 1) await new Promise(r => setTimeout(r, delay));
+  }
+
+  // Tamamlandı
+  document.getElementById('prog-text').textContent = `${selected.length} / ${selected.length}`;
+  document.getElementById('prog-pct').textContent = '100%';
+  document.getElementById('prog-bar').style.width = '100%';
+  document.getElementById('prog-bar').style.background = fail > 0 ? 'var(--yellow)' : 'var(--accent)';
+
+  log.innerHTML += `<div style="padding:10px;text-align:center;font-weight:700;color:var(--accent);margin-top:8px">
+    ✅ ${success} başarılı ${fail > 0 ? `· ❌ ${fail} başarısız` : ''}
+  </div>`;
+
+  btn.disabled = false;
+  btn.textContent = '📤 Toplu Gönder';
+}
+</script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
