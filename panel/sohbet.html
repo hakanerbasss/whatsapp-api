@@ -102,13 +102,6 @@ input,textarea{font-family:inherit;}
 /* Kilitlenmiş (elsiz) kayıt — bırakınca durmaz, ayrı bir durdur/sil denetimi çıkar */
 .locked-rec-bar{flex:1;display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:24px;padding:0 10px 0 16px;min-height:42px;}
 
-/* Gönderim öncesi önizleme — WhatsApp'taki gibi oynat/duraklat + ilerleme çubuğu */
-.review-pill{flex:1;display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:24px;padding:0 6px 0 4px;min-height:42px;}
-.review-pill .play-btn{width:34px;height:34px;border-radius:50%;border:none;background:var(--accent);color:#000;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.review-track{flex:1;height:3px;background:var(--border);border-radius:2px;position:relative;overflow:hidden;}
-.review-progress{position:absolute;left:0;top:0;bottom:0;background:var(--accent);width:0%;border-radius:2px;}
-.review-time{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;flex-shrink:0;}
-
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:999;padding:16px;}
 .modal{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;width:100%;max-width:380px;}
 .modal h3{margin-bottom:14px;font-size:16px;}
@@ -211,7 +204,7 @@ let listPollTimer = null;
 let nearBottom = true;
 let mediaRecorder = null, recordChunks = [], recordInterval = null, recSecs = 0;
 let isRecording = false, recordedBlob = null, recordedMimetype = null, recordReleaseRequested = false;
-let recordLocked = false, recordCancelled = false, recordStartX = 0, recordStartY = 0, recordStream = null, reviewAudio = null;
+let recordLocked = false, recordCancelled = false, recordStartX = 0, recordStartY = 0, recordStream = null;
 let pendingFile = null;
 
 // Uzun basmanın herhangi bir yerde tarayıcı/sistem bağlam menüsünü (ve dolayısıyla
@@ -319,13 +312,23 @@ function timeLabel(iso) {
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
+function previewTickHtml(c) {
+  // Konuşma balonundaki tikler okunduğunda renk değiştiriyordu (tickHtml/.tick.read) ama bu
+  // liste önizlemesi düz metin döndürdüğü için hep aynı soluk gri kalıyordu — "içeride okundu
+  // yanıyor, listede hiç yanmıyor" şikayetinin sebebi buydu.
+  if (c.last_direction !== 'out') return '';
+  if (c.last_status === 'failed') return '<span style="color:var(--red)">⚠</span> ';
+  if (c.last_status === 'read') return '<span style="color:var(--accent2)">✓✓</span> ';
+  if (c.last_status === 'delivered') return '<span style="color:var(--muted)">✓✓</span> ';
+  return '<span style="color:var(--muted)">✓</span> ';
+}
+
 function previewText(c) {
   if (!c.last_at) return 'Henüz mesaj yok — yazmaya başlayın';
-  const prefix = c.last_direction !== 'out' ? '' : c.last_status === 'failed' ? '⚠ ' : c.last_status === 'read' ? '✓✓ ' : c.last_status === 'delivered' ? '✓✓ ' : '✓ ';
   const icons = { image: '📷 Fotoğraf', video: '🎬 Video', audio: '🎤 Sesli mesaj', document: '📄 Belge', location: '📍 Konum', contact: '👤 Kişi', sticker: '🌟 Çıkartma' };
   const bodyEsc = esc(c.last_body || '');
-  if (c.last_type && icons[c.last_type]) return prefix + icons[c.last_type] + (bodyEsc ? ' — ' + bodyEsc : '');
-  return prefix + bodyEsc;
+  if (c.last_type && icons[c.last_type]) return icons[c.last_type] + (bodyEsc ? ' — ' + bodyEsc : '');
+  return bodyEsc;
 }
 
 function avatarLetter(c) {
@@ -353,7 +356,7 @@ function renderConvList() {
           <div class="conv-time">${timeLabel(c.last_at)}</div>
         </div>
         <div class="conv-bottom">
-          <div class="conv-prev">${previewText(c)}</div>
+          <div class="conv-prev">${previewTickHtml(c)}${previewText(c)}</div>
           ${c.unread > 0 ? `<span class="unread-badge">${c.unread}</span>` : ''}
         </div>
       </div>
@@ -563,8 +566,8 @@ function cancelAttach() {
 
 function onSendClick() {
   // Kayıt sürerken (kilitli olsun olmasın) bu düğmenin "click" olayı metin göndermeye
-  // yorumlanmamalı — kayıt sırasında onclick zaten stopRecordingToPreview/sendRecording'e
-  // bağlanıyor, ama gerçek bir fareyle basılı tutup sürükleme sırasında tarayıcı yine de
+  // yorumlanmamalı — kayıt sırasında onclick zaten stopRecording'e bağlanıyor, ama gerçek bir
+  // fareyle basılı tutup sürükleme sırasında tarayıcı yine de
   // (touchstart'ın önlediği sanal tıklamadan BAĞIMSIZ olarak) bir "click" üretebiliyor — o anda
   // #msg-input zaten DOM'da olmadığı için eski koddaki korumasız okuma çöküyordu.
   if (isRecording) return;
@@ -655,7 +658,9 @@ function onSendPointerDown(e) {
     // Kısa bir dokunuşta parmak, getUserMedia/MediaRecorder kurulumu (asenkron) daha bitmeden
     // çekiliyor olabilir — o anda isRecording hâlâ false olur. Kurulum bitince startRecording()
     // recordReleaseRequested'ı kontrol edip kaydı hemen durduruyor.
-    if (isRecording) stopRecordingToPreview();
+    // Gerçek WhatsApp'ta herhangi bir kaydırma olmadan elinizi çekmek kaydı doğrudan gönderir —
+    // ayrı bir "önizle/onayla" adımı yoktur.
+    if (isRecording) stopRecording();
   };
   document.addEventListener('pointermove', onMove);
   document.addEventListener('pointerup', stopOnce);
@@ -694,14 +699,13 @@ async function startRecording() {
       if (recordCancelled) { restoreIdlePill(); return; }
       const blob = new Blob(recordChunks, { type: recordedMimetype });
       if (blob.size < 800) { restoreIdlePill(); return; } // çok kısa/yanlışlıkla basılmış
-      recordedBlob = blob;
-      showRecordConfirm();
+      sendRecordedBlob(blob);
     };
     mediaRecorder.start();
     isRecording = true;
     recSecs = 0;
     if (recordCancelled) { cancelRecordingNow(); return; } // parmak kurulum bitmeden sola kaydırılmış
-    if (recordReleaseRequested) { stopRecordingToPreview(); return; } // parmak kurulum bitmeden çekilmiş
+    if (recordReleaseRequested) { stopRecording(); return; } // parmak kurulum bitmeden çekilmiş
     showRecordingPill();
     recordInterval = setInterval(() => { recSecs++; updateRecTimer(); }, 1000);
   } catch(e) {
@@ -731,7 +735,7 @@ function showRecordingPill() {
   if (lock) { lock.style.display = 'flex'; lock.style.transform = ''; lock.classList.remove('armed'); }
 }
 
-function stopRecordingToPreview() {
+function stopRecording() {
   isRecording = false;
   if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
 }
@@ -763,84 +767,41 @@ function lockRecording() {
   if (sendBtn) {
     sendBtn.classList.remove('rec', 'ghost');
     sendBtn.textContent = '➤';
-    sendBtn.title = 'Durdur';
-    sendBtn.onclick = stopRecordingToPreview;
-    sendBtn.onpointerdown = null;
-    sendBtn.ontouchstart = null;
-  }
-}
-
-function showRecordConfirm() {
-  const pill = document.getElementById('input-pill');
-  if (!pill) return;
-  const url = URL.createObjectURL(recordedBlob);
-  if (reviewAudio) { reviewAudio.pause(); }
-  reviewAudio = new Audio(url);
-  reviewAudio.addEventListener('timeupdate', updateReviewProgress);
-  reviewAudio.addEventListener('ended', () => { setReviewPlayIcon(false); updateReviewProgress(); });
-  pill.outerHTML = `
-    <div class="review-pill" id="input-pill">
-      <button class="play-btn" id="review-play-btn" onclick="toggleReviewPlayback()">▶</button>
-      <div class="review-track"><div class="review-progress" id="review-progress"></div></div>
-      <span class="review-time" id="review-time">${fmtTime(recSecs)}</span>
-    </div>`;
-  const left = document.getElementById('left-slot');
-  if (left) left.innerHTML = `<button class="round-btn ghost" onclick="discardRecording()" title="Sil" style="color:var(--red)">🗑</button>`;
-  const sendBtn = document.getElementById('send-btn');
-  if (sendBtn) {
-    sendBtn.classList.remove('rec', 'ghost');
-    sendBtn.textContent = '➤';
     sendBtn.title = 'Gönder';
-    sendBtn.onclick = sendRecording;
+    sendBtn.onclick = stopRecording; // durdurmak otomatik gönderir — bkz. onstop/sendRecordedBlob
     sendBtn.onpointerdown = null;
     sendBtn.ontouchstart = null;
   }
 }
 
-function toggleReviewPlayback() {
-  if (!reviewAudio) return;
-  if (reviewAudio.paused) { reviewAudio.play(); setReviewPlayIcon(true); }
-  else { reviewAudio.pause(); setReviewPlayIcon(false); }
+function showSendingPill() {
+  const pill = document.getElementById('input-pill');
+  if (pill) pill.outerHTML = `<div class="rec-pill" id="input-pill"><span class="rec-timer">Gönderiliyor…</span></div>`;
+  const left = document.getElementById('left-slot');
+  if (left) left.innerHTML = '';
+  const sendBtn = document.getElementById('send-btn');
+  if (sendBtn) sendBtn.disabled = true;
 }
 
-function setReviewPlayIcon(playing) {
-  const btn = document.getElementById('review-play-btn');
-  if (btn) btn.textContent = playing ? '⏸' : '▶';
-}
-
-function updateReviewProgress() {
-  if (!reviewAudio) return;
-  const progress = document.getElementById('review-progress');
-  const timeEl = document.getElementById('review-time');
-  if (!progress || !timeEl) return;
-  const dur = isFinite(reviewAudio.duration) && reviewAudio.duration > 0 ? reviewAudio.duration : recSecs;
-  const cur = reviewAudio.currentTime;
-  progress.style.width = (dur ? Math.min(100, (cur / dur) * 100) : 0) + '%';
-  timeEl.textContent = fmtTime(reviewAudio.paused && cur === 0 ? dur : cur);
-}
-
-function discardRecording() {
-  recordedBlob = null;
-  restoreIdlePill();
-}
-
-async function sendRecording() {
-  if (!recordedBlob) return;
-  const blob = recordedBlob;
+// Gerçek WhatsApp'ta elinizi çekmek (kaydırıp iptal/kilitlemediğiniz sürece) kaydı doğrudan
+// gönderir — ayrı bir "dinle, sonra gönder" onay adımı yoktur.
+async function sendRecordedBlob(blob) {
+  showSendingPill();
   const ext = recordedMimetype.includes('ogg') ? 'ogg' : recordedMimetype.includes('mp4') ? 'm4a' : 'webm';
-  restoreIdlePill();
   try {
     const fd = new FormData();
     fd.append('file', blob, 'ses-kaydi.' + ext);
     fd.append('ptt', 'true');
     const r = await fetch('/api/chat/' + activePhone + '/send', { method: 'POST', headers: { 'x-api-token': currentToken }, body: fd });
     const data = await r.json();
+    restoreIdlePill();
     if (!data.ok) { alert('❌ ' + (data.error || 'Gönderilemedi')); return; }
     renderBubble(data.message);
     lastMsgId = Math.max(lastMsgId, data.message.id);
     document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
     loadConversations();
   } catch(e) {
+    restoreIdlePill();
     alert('❌ Gönderme hatası: ' + e.message);
   }
 }
@@ -855,6 +816,7 @@ function restoreIdlePill() {
   const sendBtn = document.getElementById('send-btn');
   if (sendBtn) {
     sendBtn.classList.remove('rec');
+    sendBtn.disabled = false;
     sendBtn.title = 'Basılı tutup konuşun, bırakınca gönderin';
     sendBtn.onclick = onSendClick;
     sendBtn.onpointerdown = onSendPointerDown;
@@ -864,7 +826,6 @@ function restoreIdlePill() {
   recordedBlob = null;
   recordLocked = false;
   recordCancelled = false;
-  if (reviewAudio) { reviewAudio.pause(); reviewAudio = null; }
   onInputChange();
 }
 
