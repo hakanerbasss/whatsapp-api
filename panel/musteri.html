@@ -614,7 +614,23 @@ async function startConnect(method) {
       box.innerHTML = `<img src="${data.qr_base64}" style="max-width:200px;border-radius:10px;border:2px solid var(--accent)"><div style="font-size:11px;color:var(--muted);margin-top:6px">WhatsApp → Bağlı Cihazlar → QR Okut</div>`;
     } else if (data.type === 'pairing') {
       if (data.code) {
-        box.innerHTML = `<div style="font-size:32px;font-weight:800;letter-spacing:6px;color:var(--accent);padding:10px;cursor:pointer" onclick="copyToClipboard('${data.code}');this.style.color='var(--accent2)'">${data.code}</div><div style="font-size:11px;color:var(--muted)">👆 Kopyala → WhatsApp → Bağlı Cihazlar → Telefon ile Bağla</div>`;
+        // WhatsApp bu kodu üretince genelde telefona kendiliğinden bir "bağlanma isteği" bildirimi de
+        // gönderir, ama bu garanti değil (gelmeyebilir). Bildirim gelmezse müşteri "bozuk" sanmasın diye,
+        // dokununca açılan bir adım adım anlatım kartı var — hem her zaman yardımcı olur hem bildirim
+        // gelmeme ihtimaline karşı bir yedek.
+        box.innerHTML = `
+          <div style="font-size:32px;font-weight:800;letter-spacing:6px;color:var(--accent);padding:10px;cursor:pointer" onclick="copyToClipboard('${data.code}');this.style.color='var(--accent2)'">${data.code}</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px">👆 Koda dokunup kopyalayın</div>
+          <div class="card" style="padding:10px 14px;cursor:pointer;text-align:left" onclick="this.querySelector('.code-help-body').style.display=this.querySelector('.code-help-body').style.display==='none'?'':'none'">
+            <div style="color:var(--accent2);font-size:13px;font-weight:700">ℹ️ Telefonunuzda bildirim gelmediyse, nasıl bağlanırım?</div>
+            <div class="code-help-body" style="display:none;margin-top:10px;font-size:13px;color:var(--text);line-height:1.9">
+              1. Yukarıdaki koda dokunup kopyalayın<br>
+              2. Telefonunuzda <b>WhatsApp</b>'ı açın<br>
+              3. Sağ üstteki <b>⋮</b> (ya da Ayarlar) → <b>Bağlı Cihazlar</b><br>
+              4. <b>Cihaz Bağla</b> → <b>Telefon numarasıyla bağlan</b><br>
+              5. Kopyaladığınız kodu girin
+            </div>
+          </div>`;
       } else if (data.error) {
         box.innerHTML = `<div style="color:var(--red);font-size:13px">❌ ${data.error}</div>`;
       }

@@ -705,14 +705,20 @@ function renderContacts() {
   filterContacts();
 }
 
-// Kişi listesi kalabalıklaştıkça (ör. CSV'den onlarca kişi) aranan birini bulmak için: isim ya da
-// numarada arar, eşleşmeyenleri gizler (listeden SİLMEZ, yalnızca görünmez yapar).
-function filterContacts() {
+// Kişi listesi kalabalıklaştıkça (ör. CSV'den onlarca/yüzlerce kişi) aranan birkaç kişiyi bulmak için:
+// isim ya da numarada arar. "Tümünü Seç"/"Seçimi Kaldır" de bu aramayla SINIRLI çalışır — yüzlerce
+// kişiden belirli birkaçını (ör. soyadı aynı olanları) seçmek için önce arayıp sonra tek tıkla
+// hepsini seçebilirsiniz, listeyi kaydırıp tek tek işaretlemeniz gerekmez.
+function getFilteredContacts() {
   const q = (document.getElementById('contact-search')?.value || '').trim().toLocaleLowerCase('tr');
-  document.querySelectorAll('#contact-list .contact-item').forEach(item => {
-    const name = item.querySelector('.contact-name')?.textContent.toLocaleLowerCase('tr') || '';
-    const phone = item.querySelector('.contact-phone')?.textContent || '';
-    item.style.display = (!q || name.includes(q) || phone.includes(q)) ? '' : 'none';
+  if (!q) return contacts;
+  return contacts.filter(c => c.name.toLocaleLowerCase('tr').includes(q) || c.phone.includes(q));
+}
+
+function filterContacts() {
+  const visible = new Set(getFilteredContacts());
+  document.querySelectorAll('#contact-list .contact-item').forEach((item, i) => {
+    item.style.display = visible.has(contacts[i]) ? '' : 'none';
   });
 }
 
@@ -722,8 +728,8 @@ function toggleContact(i, checked) {
   renderContacts();
 }
 
-function selectAll() { contacts.forEach(c => c.selected = true); saveContacts(); renderContacts(); }
-function selectNone() { contacts.forEach(c => c.selected = false); saveContacts(); renderContacts(); }
+function selectAll() { getFilteredContacts().forEach(c => c.selected = true); saveContacts(); renderContacts(); }
+function selectNone() { getFilteredContacts().forEach(c => c.selected = false); saveContacts(); renderContacts(); }
 
 function deleteContact(i) {
   contacts.splice(i, 1);
