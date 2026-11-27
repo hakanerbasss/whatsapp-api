@@ -26,7 +26,7 @@ info() { echo -e "${C} ... ${X} $1"; }
 warn() { echo -e "${Y} UYR ${X} $1"; }
 err()  { echo -e "${R} HAT ${X} $1"; }
 
-REPO_URL="https://github.com/hakanerbasss/whatsapp-api.git"
+REPO_URL="${REPO_URL:-https://github.com/hakanerbasss/whatsapp-api.git}"
 DEST="${DEST:-$HOME/whatsapp-api}"
 DOMAIN="${DOMAIN:-}"
 SSL_EMAIL="${SSL_EMAIL:-}"
@@ -170,8 +170,16 @@ EOF
   fi
 fi
 
-# Site adresini otomatik kaydet (ayarlanmazsa müşteri mesajlarında yanlış/eksik adres görünmesin)
-node -e "require('$DEST/src/database.js').initDb().then(d=>{require('$DEST/src/database.js').setSetting('base_url','${PUBLIC_URL}');process.exit(0);}).catch(()=>process.exit(0));" 2>/dev/null || true
+# Site adresini YALNIZCA ilk kurulumda otomatik kaydet (ayarlanmazsa müşteri mesajlarında yanlış/eksik
+# adres görünmesin) — sonraki her çalıştırmada (güncelleme) var olan ayarı EZMEZ: admin panelden "Site URL"nü
+# elle değiştirdiyse (kendi alan adı, CDN vb.) o tercih korunur.
+node -e "
+const db = require('$DEST/src/database.js');
+db.initDb().then(() => {
+  if (!db.getSetting('base_url')) db.setSetting('base_url', '${PUBLIC_URL}');
+  process.exit(0);
+}).catch(() => process.exit(0));
+" 2>/dev/null || true
 
 # ── 6) Güvenlik duvarı: varsa yalnızca EKLE, var olan kuralları SİLME ──────
 if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then

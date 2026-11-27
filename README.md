@@ -69,9 +69,11 @@ node ~/whatsapp-api/reset-password.js   # admin şifresini sıfırla
 
 **WhatsApp bağlantısı kopuyor:** Panelden tekrar QR okutun ya da telefon numarasıyla eşleştirin.
 
-**Admin şifresini unuttunuz:**
+**Admin şifresini unuttunuz:** Önce servisi durdurun, sonra sıfırlayın, sonra tekrar başlatın (çalışırken sıfırlarsanız birkaç saniye içinde servisin kendi otomatik kaydı eski şifreyi geri yazar):
 ```bash
+pm2 stop whatsapp-api
 cd ~/whatsapp-api && node reset-password.js
+pm2 start whatsapp-api
 ```
 
 ## Ne yapmaz
