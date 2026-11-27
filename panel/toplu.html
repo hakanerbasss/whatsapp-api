@@ -65,6 +65,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 .loc-type-btn{flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;}
 .loc-type-btn.active{background:rgba(37,211,102,.15);color:var(--accent);border-color:var(--accent);}
 .loc-type-btn.live.active{background:rgba(255,68,68,.15);color:var(--red);border-color:var(--red);}
+/* Alt gezinme çubuğu — Sohbet/Toplu Mesaj her zaman tek dokunuşla erişilebilir kalsın, sayfa kaydırılınca kaybolmasın */
+.bottom-nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--surface);border-top:1px solid var(--border);z-index:500;padding-bottom:env(safe-area-inset-bottom);}
+.bn-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:9px 0 7px;color:var(--muted);text-decoration:none;font-size:10.5px;font-weight:700;cursor:pointer;border:none;background:none;font-family:inherit;}
+.bn-item .bn-icon{font-size:18px;}
+.bn-item.active{color:var(--accent);}
 </style>
 </head>
 <body>
@@ -89,7 +94,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
       <h1>📤 Toplu Mesaj</h1>
       <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
         <span style="font-size:12px;color:var(--muted)" id="header-info"></span>
-        <a href="/sohbet" id="sohbet-link" class="icon-btn" title="Sohbet" style="text-decoration:none">💬</a>
         <button class="icon-btn" id="theme-btn" onclick="toggleTheme()" title="Tema">🌙</button>
       </div>
     </div>
@@ -363,6 +367,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
       <div id="prog-log" style="max-height:200px;overflow-y:auto"></div>
     </div>
   </div>
+
+  <!-- Alt gezinme — her zaman sabit, sayfa kaydırılınca kaybolmaz -->
+  <nav class="bottom-nav">
+    <a id="bn-hesabim" href="/musteri" class="bn-item"><span class="bn-icon">🏠</span>Hesabım</a>
+    <a id="bn-sohbet" href="/sohbet" class="bn-item"><span class="bn-icon">💬</span>Sohbet</a>
+    <span class="bn-item active"><span class="bn-icon">📤</span>Toplu Mesaj</span>
+  </nav>
 </div>
 
 <script>
@@ -488,7 +499,8 @@ window.addEventListener('DOMContentLoaded', () => {
   if (token) {
     currentToken = token;
     document.getElementById('back-link').href = '/musteri?token=' + token;
-    document.getElementById('sohbet-link').href = '/sohbet?token=' + token;
+    document.getElementById('bn-hesabim').href = '/musteri?token=' + token;
+    document.getElementById('bn-sohbet').href = '/sohbet?token=' + token;
     document.getElementById('app').style.display = 'block';
     loadContacts();
     checkWaStatus();
@@ -508,7 +520,8 @@ async function loginWithToken() {
   document.getElementById('login-wrap').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('back-link').href = '/musteri?token=' + token;
-  document.getElementById('sohbet-link').href = '/sohbet?token=' + token;
+  document.getElementById('bn-hesabim').href = '/musteri?token=' + token;
+  document.getElementById('bn-sohbet').href = '/sohbet?token=' + token;
   loadContacts();
   checkWaStatus();
 }
@@ -691,7 +704,21 @@ function saveSelection() {
 
 let selectedPhones = loadSelection();
 
+// Rehber eskiden tarayıcıda (localStorage) saklanıyordu. Sunucuya taşıdıktan sonra, daha önce
+// o tarayıcıda kaydedilmiş kişiler görünmez olmasın diye bir kerelik otomatik aktarım yapılır.
+async function migrateLegacyContacts() {
+  const raw = localStorage.getItem('wa_contacts');
+  if (!raw) return;
+  try {
+    const legacy = JSON.parse(raw);
+    const toAdd = Array.isArray(legacy) ? legacy.map(c => ({ name: c.name, phone: c.phone })).filter(c => c.name && c.phone) : [];
+    if (toAdd.length) await api('/api/contacts/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contacts: toAdd }) });
+  } catch(e) {}
+  localStorage.removeItem('wa_contacts');
+}
+
 async function loadContacts() {
+  await migrateLegacyContacts();
   const data = await api('/api/contacts');
   contacts = (data.contacts || []).map(c => ({ ...c, selected: selectedPhones.has(c.phone) }));
   renderContacts();
