@@ -1,6 +1,5 @@
 // src/whatsapp.js
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require('baileys');
-const { Boom } = require('@hapi/boom');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -110,13 +109,15 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
     }
 
     if (connection === 'close') {
-      const statusCode = lastDisconnect?.error instanceof Boom
-        ? lastDisconnect.error.output?.statusCode
-        : 0;
+      // NOT: instanceof Boom yerine .output?.statusCode'a doğrudan bakıyoruz — baileys kendi iç
+      // node_modules'ünde AYRI bir @hapi/boom kopyası taşıyorsa (nested dependency) instanceof
+      // yanlış sonuç verebilir (sınıf aynı görünse de farklı modül nesnesi), statusCode hep 0
+      // çıkar ve asıl sebep gizli kalır — canlıda tam bu oldu.
+      const errObj = lastDisconnect?.error;
+      const statusCode = errObj?.output?.statusCode || errObj?.data?.statusCode || 0;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      // Gerçek sebep (statusCode yalnızca Boom hatalarında dolu; ağ hatalarında 0 görünür ve asıl
-      // sebep burada, mesajda/stack'te gizli kalır) — teşhis için logla.
-      console.error(`   ↳ müşteri ${customerId} bağlantı kapanma sebebi:`, lastDisconnect?.error?.message || lastDisconnect?.error || '(detay yok)');
+      // Gerçek sebep: WhatsApp'ın kendi gönderdiği "reason" kodu ve ham veri — teşhis için logla.
+      console.error(`   ↳ müşteri ${customerId} bağlantı kapanma sebebi: mesaj="${errObj?.message || '(yok)'}" statusCode=${statusCode} data=`, JSON.stringify(errObj?.output?.payload || errObj?.data || {}));
 
       connections[customerId].status = 'disconnected';
       db.upsertConnection(customerId, { status: 'disconnected' });
