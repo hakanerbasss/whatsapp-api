@@ -1,5 +1,5 @@
-const CACHE = 'wa-panel-v2';
-const SHELL = ['/', '/musteri', '/toplu', '/manifest.json', '/manifest-admin.json', '/icons/icon.svg'];
+const CACHE = 'wa-panel-v3';
+const SHELL = ['/', '/musteri', '/toplu', '/sohbet', '/manifest.json', '/manifest-admin.json', '/icons/icon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(

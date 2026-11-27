@@ -61,6 +61,10 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS daily_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER, date TEXT NOT NULL, count INTEGER DEFAULT 0, UNIQUE(customer_id, date));
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
     CREATE TABLE IF NOT EXISTS blacklist (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT UNIQUE NOT NULL, name TEXT, reason TEXT DEFAULT 'demo_used', created_at TEXT DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, contact_phone TEXT NOT NULL, direction TEXT NOT NULL, message_type TEXT DEFAULT 'text', body TEXT, media_path TEXT, media_mimetype TEXT, wa_message_id TEXT, status TEXT DEFAULT 'sent', created_at TEXT DEFAULT (datetime('now')));
+    CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(customer_id, contact_phone, id);
+    CREATE TABLE IF NOT EXISTS contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, name TEXT NOT NULL, phone TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')), UNIQUE(customer_id, phone));
+    CREATE TABLE IF NOT EXISTS chat_reads (customer_id INTEGER NOT NULL, contact_phone TEXT NOT NULL, last_read_id INTEGER DEFAULT 0, PRIMARY KEY(customer_id, contact_phone));
   `);
   saveDb();
 }
@@ -159,4 +163,86 @@ function getTotalUsage(customerId) {
   return get('SELECT COALESCE(SUM(count),0) as c FROM daily_usage WHERE customer_id=?',[customerId])?.c || 0;
 }
 
-module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed };
+// ── REHBER (SUNUCU TARAFLI KİŞİ LİSTESİ — Rehber ve Sohbet ekranları paylaşır) ──
+function addContact(customerId, name, phone) {
+  run(`INSERT INTO contacts (customer_id,name,phone) VALUES (?,?,?)
+       ON CONFLICT(customer_id,phone) DO UPDATE SET name=excluded.name`, [customerId, name, phone]);
+  return getContactByPhone(customerId, phone);
+}
+
+function bulkAddContacts(customerId, list) {
+  const stmt = getDb().prepare(`INSERT INTO contacts (customer_id,name,phone) VALUES (?,?,?)
+       ON CONFLICT(customer_id,phone) DO UPDATE SET name=excluded.name`);
+  let count = 0;
+  for (const row of list) {
+    const name = (row.name || '').toString().trim();
+    const phone = (row.phone || '').toString().trim();
+    if (!name || !phone) continue;
+    stmt.run([customerId, name, phone]);
+    count++;
+  }
+  stmt.free();
+  saveDb();
+  return count;
+}
+
+function getContacts(customerId) { return all('SELECT * FROM contacts WHERE customer_id=? ORDER BY name COLLATE NOCASE', [customerId]); }
+function getContactByPhone(customerId, phone) { return get('SELECT * FROM contacts WHERE customer_id=? AND phone=?', [customerId, phone]); }
+function deleteContact(customerId, id) { run('DELETE FROM contacts WHERE customer_id=? AND id=?', [customerId, id]); }
+function clearContacts(customerId) { run('DELETE FROM contacts WHERE customer_id=?', [customerId]); }
+
+// ── SOHBET GEÇMİŞİ ──────────────────────────────────────────────
+function addMessage(customerId, contactPhone, direction, type, body, mediaPath, mediaMimetype, waMessageId, status) {
+  run(`INSERT INTO messages (customer_id,contact_phone,direction,message_type,body,media_path,media_mimetype,wa_message_id,status)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+    [customerId, contactPhone, direction, type || 'text', body || null, mediaPath || null, mediaMimetype || null, waMessageId || null, status || 'sent']);
+  const id = get('SELECT last_insert_rowid() as id')?.id;
+  return get('SELECT * FROM messages WHERE id=?', [id]);
+}
+
+function getMessages(customerId, contactPhone, opts = {}) {
+  const limit = Math.min(opts.limit || 50, 200);
+  if (opts.afterId) {
+    return all('SELECT * FROM messages WHERE customer_id=? AND contact_phone=? AND id>? ORDER BY id ASC LIMIT ?',
+      [customerId, contactPhone, opts.afterId, limit]);
+  }
+  if (opts.beforeId) {
+    const rows = all('SELECT * FROM messages WHERE customer_id=? AND contact_phone=? AND id<? ORDER BY id DESC LIMIT ?',
+      [customerId, contactPhone, opts.beforeId, limit]);
+    return rows.reverse();
+  }
+  const rows = all('SELECT * FROM messages WHERE customer_id=? AND contact_phone=? ORDER BY id DESC LIMIT ?',
+    [customerId, contactPhone, limit]);
+  return rows.reverse();
+}
+
+function updateMessageStatusByWaId(customerId, waMessageId, status) {
+  run('UPDATE messages SET status=? WHERE customer_id=? AND wa_message_id=?', [status, customerId, waMessageId]);
+}
+
+function getConversations(customerId) {
+  return all(`
+    SELECT m.contact_phone, m.message_type, m.body, m.direction, m.status, m.created_at
+    FROM messages m
+    WHERE m.customer_id=? AND m.id IN (
+      SELECT MAX(id) FROM messages WHERE customer_id=? GROUP BY contact_phone
+    )
+    ORDER BY m.created_at DESC`, [customerId, customerId]);
+}
+
+function markRead(customerId, phone) {
+  const last = get('SELECT MAX(id) as m FROM messages WHERE customer_id=? AND contact_phone=?', [customerId, phone])?.m || 0;
+  run(`INSERT INTO chat_reads (customer_id,contact_phone,last_read_id) VALUES (?,?,?)
+       ON CONFLICT(customer_id,contact_phone) DO UPDATE SET last_read_id=excluded.last_read_id`, [customerId, phone, last]);
+}
+
+function getUnreadCounts(customerId) {
+  return all(`
+    SELECT m.contact_phone, COUNT(*) as unread
+    FROM messages m
+    LEFT JOIN chat_reads r ON r.customer_id=m.customer_id AND r.contact_phone=m.contact_phone
+    WHERE m.customer_id=? AND m.direction='in' AND m.id > COALESCE(r.last_read_id,0)
+    GROUP BY m.contact_phone`, [customerId]);
+}
+
+module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, markRead, getUnreadCounts };

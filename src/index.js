@@ -5,6 +5,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const path = require('path');
+const fs = require('fs');
 const db = require('./database');
 const wa = require('./whatsapp');
 
@@ -789,6 +790,131 @@ app.post('/api/send/media', customerAuth, rateLimit, upload.single('file'), asyn
     res.status(500).json({ error: e.message });
   }
 });
+
+// ═══════════════════════════════════════════════════════════════
+// REHBER — Toplu Mesaj ve Sohbet ekranları AYNI kişi listesini paylaşır
+// ═══════════════════════════════════════════════════════════════
+app.get('/api/contacts', customerAuth, (req, res) => {
+  res.json({ ok: true, contacts: db.getContacts(req.customer.id) });
+});
+
+app.post('/api/contacts', customerAuth, (req, res) => {
+  const name = (req.body.name || '').toString().trim();
+  const phone = wa.normalizePhone(req.body.phone || '');
+  if (!name || phone.length < 10) return res.status(400).json({ error: 'Ad ve geçerli telefon gerekli' });
+  res.json({ ok: true, contact: db.addContact(req.customer.id, name, phone) });
+});
+
+app.post('/api/contacts/bulk', customerAuth, (req, res) => {
+  const list = Array.isArray(req.body.contacts) ? req.body.contacts : [];
+  const normalized = list.map(c => ({ name: (c.name || '').toString().trim(), phone: wa.normalizePhone(c.phone || '') }))
+    .filter(c => c.name && c.phone.length >= 10);
+  const count = db.bulkAddContacts(req.customer.id, normalized);
+  res.json({ ok: true, added: count });
+});
+
+app.delete('/api/contacts/:id', customerAuth, (req, res) => {
+  db.deleteContact(req.customer.id, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/contacts', customerAuth, (req, res) => {
+  db.clearContacts(req.customer.id);
+  res.json({ ok: true });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// SOHBET — rehberdeki (veya mesajlaşılmış herhangi bir) kişiyle WhatsApp'taki gibi iki yönlü sohbet
+// ═══════════════════════════════════════════════════════════════
+function guessTypeFromMime(mime) {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  return 'document';
+}
+
+app.get('/api/chat/conversations', customerAuth, (req, res) => {
+  const convs = db.getConversations(req.customer.id);
+  const contacts = db.getContacts(req.customer.id);
+  const unread = db.getUnreadCounts(req.customer.id);
+  const nameMap = {}; contacts.forEach(c => { nameMap[c.phone] = c.name; });
+  const unreadMap = {}; unread.forEach(u => { unreadMap[u.contact_phone] = u.unread; });
+
+  const seen = new Set();
+  const list = [];
+  convs.forEach(c => {
+    seen.add(c.contact_phone);
+    list.push({
+      phone: c.contact_phone, name: nameMap[c.contact_phone] || null,
+      last_type: c.message_type, last_body: c.body, last_direction: c.direction,
+      last_status: c.status, last_at: c.created_at, unread: unreadMap[c.contact_phone] || 0
+    });
+  });
+  contacts.forEach(c => {
+    if (seen.has(c.phone)) return;
+    list.push({ phone: c.phone, name: c.name, last_type: null, last_body: null, last_direction: null, last_status: null, last_at: null, unread: 0 });
+  });
+  list.sort((a, b) => {
+    if (!a.last_at && !b.last_at) return (a.name || '').localeCompare(b.name || '');
+    if (!a.last_at) return 1;
+    if (!b.last_at) return -1;
+    return new Date(b.last_at) - new Date(a.last_at);
+  });
+  res.json({ ok: true, conversations: list });
+});
+
+app.get('/api/chat/:phone', customerAuth, (req, res) => {
+  const phone = wa.normalizePhone(req.params.phone);
+  const limit = parseInt(req.query.limit) || 50;
+  const beforeId = req.query.before_id ? parseInt(req.query.before_id) : null;
+  const afterId = req.query.after_id ? parseInt(req.query.after_id) : null;
+  res.json({ ok: true, messages: db.getMessages(req.customer.id, phone, { limit, beforeId, afterId }) });
+});
+
+app.post('/api/chat/:phone/read', customerAuth, (req, res) => {
+  db.markRead(req.customer.id, wa.normalizePhone(req.params.phone));
+  res.json({ ok: true });
+});
+
+app.post('/api/chat/:phone/send', customerAuth, upload.single('file'), async (req, res) => {
+  const phone = wa.normalizePhone(req.params.phone);
+  const { text, ptt } = req.body;
+
+  const allowed = db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
+  if (!allowed) {
+    if (req.file) fs.unlinkSync(req.file.path);
+    return res.status(429).json({ error: 'Günlük mesaj limitinize ulaştınız' });
+  }
+
+  try {
+    let opts;
+    if (req.file) {
+      const buffer = fs.readFileSync(req.file.path);
+      opts = {
+        type: guessTypeFromMime(req.file.mimetype), text: text || '',
+        mediaBuffer: buffer, mediaMimetype: req.file.mimetype, filename: req.file.originalname,
+        ptt: ptt === 'true' || ptt === '1'
+      };
+      fs.unlinkSync(req.file.path);
+    } else {
+      if (!text || !text.trim()) return res.status(400).json({ error: 'Mesaj metni gerekli' });
+      opts = { type: 'text', text };
+    }
+    const row = await wa.sendChatMessage(req.customer.id, phone, opts);
+    res.json({ ok: true, message: row });
+  } catch(e) {
+    db.addMessage(req.customer.id, phone, 'out', req.file ? guessTypeFromMime(req.file.mimetype) : 'text', text || null, null, null, null, 'failed');
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/chat/media/:filename', customerAuth, (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(__dirname, '../data/media', String(req.customer.id), filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Dosya bulunamadı' });
+  res.sendFile(filePath);
+});
+
 // Müşteri kendi tokenını yeniler
 app.post('/api/musteri/renew-token', customerAuthDashboard, (req, res) => {
   const { v4: uuidv4 } = require('uuid');
@@ -874,6 +1000,10 @@ app.get('/kayit', (req, res) => {
 
 app.get('/musteri', (req, res) => {
   res.sendFile(path.join(__dirname, '../panel/musteri.html'));
+});
+
+app.get('/sohbet', (req, res) => {
+  res.sendFile(path.join(__dirname, '../panel/sohbet.html'));
 });
 
 app.get('*', (req, res) => {

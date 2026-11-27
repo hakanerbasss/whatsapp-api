@@ -170,6 +170,9 @@ input:focus{border-color:var(--accent);}
     <!-- Plan Yönetimi — JS ile doldurulacak -->
     <div id="plan-card-container"></div>
 
+    <!-- Sohbet -->
+    <a id="sohbet-link" href="/sohbet" style="display:block;width:100%;margin-bottom:12px;padding:12px;border-radius:10px;background:rgba(37,211,102,.1);border:1px solid rgba(37,211,102,.3);color:var(--accent);cursor:pointer;font-size:14px;font-weight:700;text-align:center;text-decoration:none">💬 Sohbet</a>
+
     <!-- Toplu Mesaj -->
     <a id="toplu-link" href="/toplu" style="display:block;width:100%;margin-bottom:12px;padding:12px;border-radius:10px;background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.3);color:var(--accent2);cursor:pointer;font-size:14px;font-weight:700;text-align:center;text-decoration:none">📤 Toplu Mesaj Gönder</a>
 
@@ -311,6 +314,7 @@ async function loadDashboard(token) {
     document.getElementById('login-wrap').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
     document.getElementById('toplu-link').href = '/toplu?token=' + token;
+    document.getElementById('sohbet-link').href = '/sohbet?token=' + token;
     renderDashboard(data, token);
     loadWebhook();
   } catch(e) {

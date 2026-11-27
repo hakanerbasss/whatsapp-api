@@ -1,19 +1,53 @@
 // src/whatsapp.js
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require('baileys');
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, downloadMediaMessage } = require('baileys');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
 const QRCode = require('qrcode');
+const { v4: uuidv4 } = require('uuid');
 const db = require('./database');
 const EventEmitter = require('events');
 
 const SESSION_DIR = path.join(__dirname, '../data/sessions');
 if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true });
 
+const MEDIA_DIR = path.join(__dirname, '../data/media');
+if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
+
 const connections = {};
 const waEvents = new EventEmitter();
 waEvents.setMaxListeners(100);
+
+// Gelen (WA JID) ve giden (kullanıcının yazdığı) numarayı aynı anahtara indirger —
+// sohbet geçmişi gelen/giden mesajları aynı contact_phone altında eşleştirsin diye.
+function normalizePhone(num) {
+  let jid = (num || '').toString().replace(/\D/g, '');
+  if (jid.startsWith('0')) jid = '90' + jid.slice(1);
+  return jid;
+}
+
+const MIME_EXT = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+  'video/mp4': 'mp4', 'video/3gpp': '3gp',
+  'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/aac': 'aac', 'audio/wav': 'wav',
+  'application/pdf': 'pdf'
+};
+
+function extFromMime(mime, fallbackName) {
+  if (fallbackName && path.extname(fallbackName)) return path.extname(fallbackName).slice(1);
+  const clean = (mime || '').split(';')[0].trim();
+  if (MIME_EXT[clean]) return MIME_EXT[clean];
+  return (clean.split('/')[1] || 'bin');
+}
+
+function saveMediaBuffer(customerId, buffer, mimetype, fallbackName) {
+  const dir = path.join(MEDIA_DIR, String(customerId));
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const filename = `${uuidv4()}.${extFromMime(mimetype, fallbackName)}`;
+  fs.writeFileSync(path.join(dir, filename), buffer);
+  return filename;
+}
 
 function fireWebhook(webhookUrl, payload) {
   if (!webhookUrl) return;
@@ -160,7 +194,7 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
 
   sock.ev.on('messages.upsert', ({ messages, type }) => {
     if (type !== 'notify') return;
-    messages.forEach(msg => {
+    messages.forEach(async msg => {
       if (msg.key.fromMe) return;
       const from = msg.key.remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '');
       const isGroup = msg.key.remoteJid?.endsWith('@g.us');
@@ -191,20 +225,41 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
 
       const customer = db.getCustomerById(customerId);
       if (customer?.webhook_url) fireWebhook(customer.webhook_url, payload);
+
+      // Sohbet geçmişi — yalnızca birebir (grup olmayan) konuşmalar; "rehber" tek kişilik kişilere göre kurulu.
+      if (isGroup) return;
+      const mediaMsg = m?.imageMessage || m?.videoMessage || m?.audioMessage || m?.documentMessage || m?.stickerMessage;
+      let mediaPath = null, mediaMimetype = null;
+      if (mediaMsg) {
+        mediaMimetype = mediaMsg.mimetype || null;
+        try {
+          const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: require('pino')({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage });
+          mediaPath = saveMediaBuffer(customerId, buffer, mediaMimetype, m?.documentMessage?.fileName);
+        } catch (e) {
+          console.error(`⚠️  Medya indirilemedi (müşteri ${customerId}):`, e.message);
+        }
+      }
+      const phone = normalizePhone(from);
+      const row = db.addMessage(customerId, phone, 'in', msgType, text || null, mediaPath, mediaMimetype, msg.key.id, 'received');
+      waEvents.emit(`chat_${customerId}_${phone}`, { event: 'message', ...row });
     });
   });
 
   sock.ev.on('message-receipt.update', updates => {
     updates.forEach(({ key, receipt }) => {
-      const customer = db.getCustomerById(customerId);
-      if (!customer?.webhook_url) return;
       const status = receipt?.readTimestamp ? 'read'
         : receipt?.receiptTimestamp ? 'delivered' : 'sent';
+      const phone = normalizePhone(key.remoteJid?.replace('@s.whatsapp.net', ''));
+      db.updateMessageStatusByWaId(customerId, key.id, status);
+      waEvents.emit(`chat_${customerId}_${phone}`, { event: 'status', wa_message_id: key.id, status });
+
+      const customer = db.getCustomerById(customerId);
+      if (!customer?.webhook_url) return;
       fireWebhook(customer.webhook_url, {
         event: 'message_status',
         customer_id: customerId,
         message_id: key.id,
-        to: key.remoteJid?.replace('@s.whatsapp.net', ''),
+        to: phone,
         status
       });
     });
@@ -220,11 +275,7 @@ async function sendMessage(customerId, to, content) {
     throw new Error('WhatsApp bağlantısı kesildi');
   }
 
-  let jid = to.toString().replace(/\D/g, '');
-  if (jid.startsWith('0')) jid = '90' + jid.slice(1);
-  // Artık sadece rakam — @s.whatsapp.net ekle
-  jid = jid + '@s.whatsapp.net';
-
+  const jid = normalizePhone(to) + '@s.whatsapp.net';
   const msg = typeof content === 'string' ? { text: content } : content;
 
   // 15 saniye timeout ile gönder
@@ -232,6 +283,33 @@ async function sendMessage(customerId, to, content) {
     conn.socket.sendMessage(jid, msg),
     new Promise((_, reject) => setTimeout(() => reject(new Error('Mesaj gönderme timeout (15s)')), 15000))
   ]);
+}
+
+// Sohbet ekranından gönderim — mesajı WhatsApp'a yollar VE geçmişe kaydeder.
+async function sendChatMessage(customerId, to, opts) {
+  const { type, text, mediaBuffer, mediaMimetype, filename, ptt } = opts;
+  const phone = normalizePhone(to);
+
+  let content;
+  if (type === 'text') {
+    content = { text: text || '' };
+  } else if (type === 'image') {
+    content = { image: mediaBuffer, caption: text || '' };
+  } else if (type === 'video') {
+    content = { video: mediaBuffer, caption: text || '' };
+  } else if (type === 'audio') {
+    content = { audio: mediaBuffer, mimetype: mediaMimetype || 'audio/ogg; codecs=opus', ptt: !!ptt };
+  } else if (type === 'document') {
+    content = { document: mediaBuffer, fileName: filename || 'dosya', mimetype: mediaMimetype || 'application/octet-stream' };
+  } else {
+    throw new Error('Desteklenmeyen mesaj tipi');
+  }
+
+  const result = await sendMessage(customerId, phone, content);
+  const waMessageId = result?.key?.id || null;
+  const mediaPath = mediaBuffer ? saveMediaBuffer(customerId, mediaBuffer, mediaMimetype, filename) : null;
+
+  return db.addMessage(customerId, phone, 'out', type, text || null, mediaPath, mediaMimetype || null, waMessageId, 'sent');
 }
 
 async function disconnectCustomer(customerId) {
@@ -275,4 +353,4 @@ function getConn(customerId) {
   return connections[customerId]?.socket || null;
 }
 
-module.exports = { startConnection, sendMessage, disconnectCustomer, getStatus, getConn, waEvents, restoreConnections };
+module.exports = { startConnection, sendMessage, sendChatMessage, disconnectCustomer, getStatus, getConn, waEvents, restoreConnections, normalizePhone };

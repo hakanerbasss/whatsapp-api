@@ -89,6 +89,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
       <h1>📤 Toplu Mesaj</h1>
       <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
         <span style="font-size:12px;color:var(--muted)" id="header-info"></span>
+        <a href="/sohbet" id="sohbet-link" class="icon-btn" title="Sohbet" style="text-decoration:none">💬</a>
         <button class="icon-btn" id="theme-btn" onclick="toggleTheme()" title="Tema">🌙</button>
       </div>
     </div>
@@ -487,6 +488,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (token) {
     currentToken = token;
     document.getElementById('back-link').href = '/musteri?token=' + token;
+    document.getElementById('sohbet-link').href = '/sohbet?token=' + token;
     document.getElementById('app').style.display = 'block';
     loadContacts();
     checkWaStatus();
@@ -506,6 +508,7 @@ async function loginWithToken() {
   document.getElementById('login-wrap').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('back-link').href = '/musteri?token=' + token;
+  document.getElementById('sohbet-link').href = '/sohbet?token=' + token;
   loadContacts();
   checkWaStatus();
 }
@@ -671,15 +674,27 @@ function onFileSelect(prefix) {
   }
 }
 
-// ── REHBER ───────────────────────────────────────────────────────
-function loadContacts() {
-  try { contacts = JSON.parse(localStorage.getItem('wa_contacts') || '[]'); }
-  catch(e) { contacts = []; }
-  renderContacts();
+// ── REHBER (sunucuda saklanır — Sohbet ekranıyla ortak) ──────────
+function api(path, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({ 'x-api-token': currentToken }, opts.headers);
+  return fetch(path, opts).then(r => r.json());
 }
 
-function saveContacts() {
-  localStorage.setItem('wa_contacts', JSON.stringify(contacts));
+function loadSelection() {
+  try { return new Set(JSON.parse(localStorage.getItem('wa_bulk_selected') || '[]')); }
+  catch(e) { return new Set(); }
+}
+function saveSelection() {
+  localStorage.setItem('wa_bulk_selected', JSON.stringify([...selectedPhones]));
+}
+
+let selectedPhones = loadSelection();
+
+async function loadContacts() {
+  const data = await api('/api/contacts');
+  contacts = (data.contacts || []).map(c => ({ ...c, selected: selectedPhones.has(c.phone) }));
+  renderContacts();
 }
 
 function renderContacts() {
@@ -724,27 +739,31 @@ function filterContacts() {
 
 function toggleContact(i, checked) {
   contacts[i].selected = checked;
-  saveContacts();
+  if (checked) selectedPhones.add(contacts[i].phone); else selectedPhones.delete(contacts[i].phone);
+  saveSelection();
   renderContacts();
 }
 
-function selectAll() { getFilteredContacts().forEach(c => c.selected = true); saveContacts(); renderContacts(); }
-function selectNone() { getFilteredContacts().forEach(c => c.selected = false); saveContacts(); renderContacts(); }
+function selectAll() { getFilteredContacts().forEach(c => { c.selected = true; selectedPhones.add(c.phone); }); saveSelection(); renderContacts(); }
+function selectNone() { getFilteredContacts().forEach(c => { c.selected = false; selectedPhones.delete(c.phone); }); saveSelection(); renderContacts(); }
 
-function deleteContact(i) {
-  contacts.splice(i, 1);
-  saveContacts();
-  renderContacts();
+async function deleteContact(i) {
+  const c = contacts[i];
+  await api('/api/contacts/' + c.id, { method: 'DELETE' });
+  selectedPhones.delete(c.phone);
+  saveSelection();
+  await loadContacts();
 }
 
-function clearContacts() {
+async function clearContacts() {
   if (!confirm('Tüm rehber silinsin mi?')) return;
-  contacts = [];
-  saveContacts();
-  renderContacts();
+  await api('/api/contacts', { method: 'DELETE' });
+  selectedPhones.clear();
+  saveSelection();
+  await loadContacts();
 }
 
-function addContact() {
+async function addContact() {
   const name = document.getElementById('add-name').value.trim();
   const phone = document.getElementById('add-phone').value.trim().replace(/\D/g,'');
   const el = document.getElementById('add-result');
@@ -752,32 +771,31 @@ function addContact() {
   if (!name || !phone) { el.innerHTML = '<span style="color:var(--red)">Ad ve telefon gerekli</span>'; return; }
   if (contacts.find(c => c.phone === phone)) { el.innerHTML = '<span style="color:var(--red)">Bu numara zaten ekli</span>'; return; }
 
-  contacts.push({ name, phone, selected: true });
-  saveContacts();
+  const data = await api('/api/contacts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, phone }) });
+  if (!data.ok) { el.innerHTML = `<span style="color:var(--red)">${data.error || 'Eklenemedi'}</span>`; return; }
+  selectedPhones.add(phone);
+  saveSelection();
   document.getElementById('add-name').value = '';
   document.getElementById('add-phone').value = '';
   el.innerHTML = '<span style="color:var(--accent)">✅ Eklendi!</span>';
   setTimeout(() => el.innerHTML = '', 2000);
-  renderContacts();
+  await loadContacts();
 }
 
 function importContacts(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     const text = e.target.result;
-    let added = 0;
+    const toAdd = [];
     if (file.name.endsWith('.json')) {
       try {
         const data = JSON.parse(text);
         data.forEach(row => {
           const name = row.isim || row.name || row.ad || '';
           const phone = (row.telefon || row.phone || row.tel || '').toString().replace(/\D/g,'');
-          if (name && phone && !contacts.find(c => c.phone === phone)) {
-            contacts.push({ name, phone, selected: true });
-            added++;
-          }
+          if (name && phone) toAdd.push({ name, phone });
         });
       } catch(e) {}
     } else {
@@ -846,36 +864,30 @@ function importContacts(input) {
           phone = '90' + phone;
         }
 
-        if (name && phone && phone.length >= 10 && !contacts.find(c => c.phone === phone)) {
-          contacts.push({ name, phone, selected: true });
-          added++;
-        }
+        if (name && phone && phone.length >= 10) toAdd.push({ name, phone });
       });
     }
-    saveContacts();
-    renderContacts();
-    document.getElementById('import-result').innerHTML = `<span style="color:var(--accent)">✅ ${added} kişi eklendi</span>`;
+    const data = await api('/api/contacts/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contacts: toAdd }) });
+    await loadContacts();
+    document.getElementById('import-result').innerHTML = `<span style="color:var(--accent)">✅ ${data.added || 0} kişi eklendi</span>`;
   };
   reader.readAsText(file);
 }
 
-function importFromText() {
+async function importFromText() {
   const text = document.getElementById('import-json').value.trim();
   if (!text) return;
   try {
-    const data = JSON.parse(text);
-    let added = 0;
-    data.forEach(row => {
+    const parsed = JSON.parse(text);
+    const toAdd = [];
+    parsed.forEach(row => {
       const name = row.isim || row.name || row.ad || '';
       const phone = (row.telefon || row.phone || row.tel || '').toString().replace(/\D/g,'');
-      if (name && phone && !contacts.find(c => c.phone === phone)) {
-        contacts.push({ name, phone, selected: true });
-        added++;
-      }
+      if (name && phone) toAdd.push({ name, phone });
     });
-    saveContacts();
-    renderContacts();
-    document.getElementById('import-result').innerHTML = `<span style="color:var(--accent)">✅ ${added} kişi eklendi</span>`;
+    const data = await api('/api/contacts/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contacts: toAdd }) });
+    await loadContacts();
+    document.getElementById('import-result').innerHTML = `<span style="color:var(--accent)">✅ ${data.added || 0} kişi eklendi</span>`;
   } catch(e) {
     document.getElementById('import-result').innerHTML = '<span style="color:var(--red)">❌ Geçersiz JSON</span>';
   }
