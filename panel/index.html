@@ -471,9 +471,14 @@ async function addCustomer() {
   if (!data.name) return alert('Ad gerekli');
   const r = await apiFetch('/api/admin/customers', { method: 'POST', body: JSON.stringify(data) });
   if (r.ok) {
-    closeModal();
     renderCustomers();
-    alert(`✅ Müşteri eklendi!\nToken: ${r.customer.token}`);
+    openModal('✅ Müşteri eklendi', `
+      <div class="card">
+        <div class="card-title">API Token</div>
+        <div class="token-box" onclick="navigator.clipboard?.writeText('${r.customer.token}');alert('Kopyalandı!')">${r.customer.token}</div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="closeModal()">Kapat</button>
+    `);
   } else alert('Hata: ' + r.error);
 }
 
@@ -527,9 +532,19 @@ async function saveEdit(id) {
 async function resetToken(id) {
   if (!confirm('Token yenilensin mi? Müşterinin mevcut tokeni geçersiz olur.')) return;
   const r = await apiFetch(`/api/admin/customers/${id}/reset-token`, { method: 'POST' });
-  if (r.ok) alert('Yeni token: ' + r.token);
-  closeModal();
   renderCustomers();
+  if (r.ok) {
+    openModal('🔑 Yeni Token', `
+      <div class="card">
+        <div class="card-title">API Token</div>
+        <div class="token-box" onclick="navigator.clipboard?.writeText('${r.token}');alert('Kopyalandı!')">${r.token}</div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="closeModal()">Kapat</button>
+    `);
+    return;
+  }
+  alert('Hata: ' + (r.error || 'bilinmeyen hata'));
+  closeModal();
 }
 
 // ── WHATSAPP BAĞLANTI ─────────────────────────────────────────────

@@ -114,6 +114,9 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
         ? lastDisconnect.error.output?.statusCode
         : 0;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      // Gerçek sebep (statusCode yalnızca Boom hatalarında dolu; ağ hatalarında 0 görünür ve asıl
+      // sebep burada, mesajda/stack'te gizli kalır) — teşhis için logla.
+      console.error(`   ↳ müşteri ${customerId} bağlantı kapanma sebebi:`, lastDisconnect?.error?.message || lastDisconnect?.error || '(detay yok)');
 
       connections[customerId].status = 'disconnected';
       db.upsertConnection(customerId, { status: 'disconnected' });
