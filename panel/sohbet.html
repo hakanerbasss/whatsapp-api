@@ -80,6 +80,10 @@ input,textarea{font-family:inherit;}
 .round-btn{width:40px;height:40px;border-radius:50%;border:none;background:var(--accent);color:#000;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .round-btn.ghost{background:var(--card);color:var(--muted);border:1px solid var(--border);}
 .round-btn.rec{background:var(--red);color:#fff;}
+.attach-menu{position:absolute;bottom:48px;right:0;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.3);overflow:hidden;z-index:50;min-width:180px;}
+.attach-menu button{display:block;width:100%;text-align:left;padding:11px 14px;border:none;background:none;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit;}
+.attach-menu button:hover{background:rgba(127,127,127,.12);}
+.attach-menu button:not(:last-child){border-bottom:1px solid var(--border);}
 .attach-preview{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface);border-top:1px solid var(--border);font-size:12px;}
 .attach-preview img{width:40px;height:40px;object-fit:cover;border-radius:6px;}
 .rec-ui{display:flex;align-items:center;gap:10px;flex:1;padding:0 8px;font-size:13px;color:var(--red);}
@@ -346,12 +350,17 @@ async function openConversation(phone) {
     <div class="msgs" id="msgs"></div>
     <div id="attach-preview-slot"></div>
     <div class="input-bar" id="input-bar">
-      <textarea id="msg-input" rows="1" placeholder="Mesaj yazın..." oninput="onInputChange()" onkeydown="onInputKeydown(event)"></textarea>
+      <textarea id="msg-input" rows="1" dir="ltr" placeholder="Mesaj yazın..." oninput="onInputChange()" onkeydown="onInputKeydown(event)"></textarea>
       <input type="file" id="photo-input" style="display:none" accept="image/*,video/*" onchange="onFileSelect(this)">
       <input type="file" id="file-input" style="display:none" accept="application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip" onchange="onFileSelect(this)">
-      <button class="round-btn ghost" onclick="document.getElementById('photo-input').click()" title="Fotoğraf/Video">🖼</button>
-      <button class="round-btn ghost" id="attach-btn" onclick="document.getElementById('file-input').click()" title="Belge">📎</button>
-      <button class="round-btn" id="send-btn" title="Basılı tutup konuşun, bırakınca gönderin" onclick="onSendClick()" onpointerdown="onSendPointerDown(event)" style="touch-action:none;user-select:none">🎙</button>
+      <div style="position:relative;flex-shrink:0">
+        <button class="round-btn ghost" id="attach-btn" onclick="toggleAttachMenu(event)" title="Ekle">📎</button>
+        <div id="attach-menu" class="attach-menu" style="display:none">
+          <button onclick="closeAttachMenu();document.getElementById('photo-input').click()">🖼 Fotoğraf/Video</button>
+          <button onclick="closeAttachMenu();document.getElementById('file-input').click()">📄 Belge</button>
+        </div>
+      </div>
+      <button class="round-btn ghost" id="send-btn" title="Basılı tutup konuşun, bırakınca gönderin" onclick="onSendClick()" onpointerdown="onSendPointerDown(event)" ontouchstart="event.preventDefault()" oncontextmenu="return false" style="touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none">🎙</button>
     </div>`;
 
   document.getElementById('msgs').addEventListener('scroll', () => {
@@ -461,10 +470,27 @@ function updateBubbleStatus(el, row) {
 // ── GÖNDERİM ─────────────────────────────────────────────────────
 function onInputChange() {
   const v = document.getElementById('msg-input').value;
-  document.getElementById('send-btn').textContent = (v.trim() || pendingFile) ? '➤' : '🎙';
+  const hasContent = !!(v.trim() || pendingFile);
+  const btn = document.getElementById('send-btn');
+  btn.textContent = hasContent ? '➤' : '🎙';
+  btn.classList.toggle('ghost', !hasContent); // boşken diğer düğmelerle aynı (soluk) görünüm, doluyken belirgin
   const ta = document.getElementById('msg-input');
   ta.style.height = 'auto';
   ta.style.height = Math.min(ta.scrollHeight, 100) + 'px';
+}
+
+function toggleAttachMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('attach-menu');
+  if (!menu) return;
+  const opening = menu.style.display !== 'block';
+  menu.style.display = opening ? 'block' : 'none';
+  if (opening) document.addEventListener('click', closeAttachMenu, { once: true });
+}
+
+function closeAttachMenu() {
+  const menu = document.getElementById('attach-menu');
+  if (menu) menu.style.display = 'none';
 }
 
 function onInputKeydown(e) {
@@ -635,12 +661,17 @@ function restoreInputBar() {
   const bar = document.getElementById('input-bar');
   if (!bar) return;
   bar.innerHTML = `
-    <textarea id="msg-input" rows="1" placeholder="Mesaj yazın..." oninput="onInputChange()" onkeydown="onInputKeydown(event)"></textarea>
+    <textarea id="msg-input" rows="1" dir="ltr" placeholder="Mesaj yazın..." oninput="onInputChange()" onkeydown="onInputKeydown(event)"></textarea>
     <input type="file" id="photo-input" style="display:none" accept="image/*,video/*" onchange="onFileSelect(this)">
     <input type="file" id="file-input" style="display:none" accept="application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip" onchange="onFileSelect(this)">
-    <button class="round-btn ghost" onclick="document.getElementById('photo-input').click()" title="Fotoğraf/Video">🖼</button>
-    <button class="round-btn ghost" id="attach-btn" onclick="document.getElementById('file-input').click()" title="Belge">📎</button>
-    <button class="round-btn" id="send-btn" title="Basılı tutup konuşun, bırakınca gönderin" onclick="onSendClick()" onpointerdown="onSendPointerDown(event)" style="touch-action:none;user-select:none">🎙</button>`;
+    <div style="position:relative;flex-shrink:0">
+      <button class="round-btn ghost" id="attach-btn" onclick="toggleAttachMenu(event)" title="Ekle">📎</button>
+      <div id="attach-menu" class="attach-menu" style="display:none">
+        <button onclick="closeAttachMenu();document.getElementById('photo-input').click()">🖼 Fotoğraf/Video</button>
+        <button onclick="closeAttachMenu();document.getElementById('file-input').click()">📄 Belge</button>
+      </div>
+    </div>
+    <button class="round-btn ghost" id="send-btn" title="Basılı tutup konuşun, bırakınca gönderin" onclick="onSendClick()" onpointerdown="onSendPointerDown(event)" ontouchstart="event.preventDefault()" oncontextmenu="return false" style="touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none">🎙</button>`;
   recordedBlob = null;
   onInputChange();
 }
