@@ -188,7 +188,7 @@ let msgPollTimer = null;
 let listPollTimer = null;
 let nearBottom = true;
 let mediaRecorder = null, recordChunks = [], recordInterval = null, recSecs = 0;
-let isRecording = false, recordedBlob = null, recordedMimetype = null;
+let isRecording = false, recordedBlob = null, recordedMimetype = null, recordReleaseRequested = false;
 let pendingFile = null;
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -570,6 +570,7 @@ function onSendPointerDown(e) {
   const text = document.getElementById('msg-input').value.trim();
   if (text || pendingFile) return; // dolu giriş varken normal gönder tıklaması çalışsın
   e.preventDefault();
+  recordReleaseRequested = false;
   startRecording();
   // Kayıt başlarken giriş çubuğunun içeriği (bu düğme dahil) değiştiriliyor, bu yüzden bırakma
   // olayını düğmeye değil document'e bağlıyoruz — aksi halde düğme DOM'dan kalkınca pointerup
@@ -577,6 +578,12 @@ function onSendPointerDown(e) {
   const stopOnce = (ev) => {
     document.removeEventListener('pointerup', stopOnce);
     document.removeEventListener('pointercancel', stopOnce);
+    recordReleaseRequested = true;
+    // Kısa bir dokunuşta parmak, getUserMedia/MediaRecorder kurulumu (asenkron) daha bitmeden
+    // çekiliyor olabilir — o anda isRecording hâlâ false olur, bu tek seferlik dinleyici de
+    // kendini kaldırdığı için kayıt asla durdurulamaz hale geliyordu (sonsuza dek "Kaydediliyor"
+    // kalıyordu). Kurulum bitince startRecording() recordReleaseRequested'ı kontrol edip kaydı
+    // hemen durduruyor; isRecording zaten true iseburada direkt durduruyoruz.
     if (isRecording) stopRecordingToPreview();
   };
   document.addEventListener('pointerup', stopOnce);
@@ -603,6 +610,7 @@ async function startRecording() {
     mediaRecorder.start();
     isRecording = true;
     recSecs = 0;
+    if (recordReleaseRequested) { stopRecordingToPreview(); return; } // parmak kurulum bitmeden çekilmiş
     const bar = document.getElementById('input-bar');
     bar.innerHTML = `
       <div class="rec-ui">🔴 Kaydediliyor... <span id="rec-timer">0:00</span></div>
