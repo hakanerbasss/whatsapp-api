@@ -360,7 +360,7 @@ async function openConversation(phone) {
           <button onclick="closeAttachMenu();document.getElementById('file-input').click()">📄 Belge</button>
         </div>
       </div>
-      <button class="round-btn ghost" id="send-btn" title="Basılı tutup konuşun, bırakınca gönderin" onclick="onSendClick()" onpointerdown="onSendPointerDown(event)" ontouchstart="event.preventDefault()" oncontextmenu="return false" style="touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none">🎙</button>
+      <button class="round-btn ghost" id="send-btn" title="Basılı tutup konuşun, bırakınca gönderin" onclick="onSendClick()" onpointerdown="onSendPointerDown(event)" ontouchstart="onSendTouchStart(event)" oncontextmenu="return false" style="touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none">🎙</button>
     </div>`;
 
   document.getElementById('msgs').addEventListener('scroll', () => {
@@ -566,6 +566,16 @@ function pickRecorderMimeType() {
   return '';
 }
 
+function onSendTouchStart(e) {
+  // touchstart'ta preventDefault çağırmak (uzun basma/Circle-to-Search'ü engellemek için gerekli)
+  // dolu girişte de koşulsuz yapılırsa mobil tarayıcı o dokunuş için click olayını hiç
+  // üretmiyor — metin/fotoğraf gönder tıklaması bu yüzden hiç çalışmıyordu. Yalnızca gerçekten
+  // kayda başlayacaksak (giriş boşken) engelliyoruz.
+  const text = document.getElementById('msg-input').value.trim();
+  if (text || pendingFile) return;
+  e.preventDefault();
+}
+
 function onSendPointerDown(e) {
   const text = document.getElementById('msg-input').value.trim();
   if (text || pendingFile) return; // dolu giriş varken normal gönder tıklaması çalışsın
@@ -679,7 +689,7 @@ function restoreInputBar() {
         <button onclick="closeAttachMenu();document.getElementById('file-input').click()">📄 Belge</button>
       </div>
     </div>
-    <button class="round-btn ghost" id="send-btn" title="Basılı tutup konuşun, bırakınca gönderin" onclick="onSendClick()" onpointerdown="onSendPointerDown(event)" ontouchstart="event.preventDefault()" oncontextmenu="return false" style="touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none">🎙</button>`;
+    <button class="round-btn ghost" id="send-btn" title="Basılı tutup konuşun, bırakınca gönderin" onclick="onSendClick()" onpointerdown="onSendPointerDown(event)" ontouchstart="onSendTouchStart(event)" oncontextmenu="return false" style="touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none">🎙</button>`;
   recordedBlob = null;
   onInputChange();
 }
