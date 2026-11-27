@@ -158,9 +158,26 @@ if [ -n "$DOMAIN" ]; then
     apt-get update -y -q && apt-get install -y -q nginx
   fi
   NGINX_FILE="/etc/nginx/sites-available/whatsapp-api-${DOMAIN}"
-  cat > "$NGINX_FILE" <<EOF
+  CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+
+  # nginx dosyasını HER ZAMAN kendimiz, baştan sona yazıyoruz — certbot'un installer eklentisine
+  # (--nginx) hiç dokunduruyoruz çünkü o, "yeniden kurulum" sırasında kendi yönlendirme (redirect)
+  # tercihini hatırlayıp --no-redirect'e rağmen geri ekleyebiliyor (canlıda böyle oldu, sonsuz
+  # yönlendirme döngüsü — ERR_TOO_MANY_REDIRECTS). Hem 80 hem 443 (sertifika varsa) AYNI şekilde
+  # doğrudan uygulamaya yönlendirir, HİÇBİR YERDE yönlendirme (redirect) yapmaz — Cloudflare "Flexible"
+  # modunda (orijine düz HTTP ile bağlanır, TİS Asistanı da bu şekilde çalışıyor) ya da "Full" modunda
+  # ya da Cloudflare hiç kullanılmadan doğrudan IP ile, hepsinde aynı şekilde çalışır.
+  write_nginx_vhost() {
+    local ssl_lines=""
+    if [ -f "$CERT_DIR/fullchain.pem" ]; then
+      ssl_lines="    listen 443 ssl;
+    ssl_certificate ${CERT_DIR}/fullchain.pem;
+    ssl_certificate_key ${CERT_DIR}/privkey.pem;"
+    fi
+    cat > "$NGINX_FILE" <<EOF
 server {
     listen 80;
+${ssl_lines}
     server_name ${DOMAIN};
 
     location / {
@@ -174,6 +191,9 @@ server {
     }
 }
 EOF
+  }
+
+  write_nginx_vhost
   mkdir -p /etc/nginx/sites-enabled
   ln -sf "$NGINX_FILE" "/etc/nginx/sites-enabled/whatsapp-api-${DOMAIN}"
 
@@ -193,19 +213,26 @@ EOF
   else
     info "SSL sertifikası alınıyor (Let's Encrypt)..."
     apt-get install -y -q certbot python3-certbot-nginx > /dev/null 2>&1
-    # --no-redirect ÖNEMLİ: Cloudflare gibi bir CDN "Flexible" modundaysa (orijine düz HTTP ile
-    # bağlanır) port 80'i https'e zorlamak sonsuz yönlendirme döngüsü yaratır (ERR_TOO_MANY_REDIRECTS).
-    # Sertifika yine kurulur, 443 yine çalışır; yalnızca 80'den 443'e OTOMATİK zorlama kapatılır.
-    if certbot --nginx --non-interactive --agree-tos --no-redirect -m "$SSL_EMAIL" -d "$DOMAIN" > /dev/null 2>&1; then
-      ok "SSL sertifikası kuruldu: https://${DOMAIN}"
-      PUBLIC_URL="https://${DOMAIN}"
+    # certonly: certbot YALNIZCA sertifikayı alır/yeniler, nginx dosyasına hiç DOKUNMAZ — doğrulama için
+    # nginx eklentisini kullanır (zaten çalışan $NGINX_FILE'ı geçici olarak kendisi düzenler, bitince
+    # eski hâline döndürür), ama kalıcı dosyayı biz yazıyoruz (write_nginx_vhost).
+    if certbot certonly --nginx --non-interactive --agree-tos -m "$SSL_EMAIL" -d "$DOMAIN" > /dev/null 2>&1 \
+       && [ -f "$CERT_DIR/fullchain.pem" ]; then
+      write_nginx_vhost   # artık sertifika var: aynı dosyayı 443 satırlarıyla yeniden yaz
+      if nginx -t 2>/dev/null; then
+        (systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null) || true
+        ok "SSL sertifikası kuruldu: https://${DOMAIN} (80 ve 443 aynı şekilde çalışır, hiçbir yönlendirme yoktur)"
+        PUBLIC_URL="https://${DOMAIN}"
+      else
+        err "Sertifika alındı ama nginx yapılandırması hatalı görünüyor — elle kontrol edin: nginx -t"
+      fi
     else
       warn "SSL alınamadı. İki olası sebep var:"
-      warn "  1) DNS henüz tam yayılmadı — birkaç dakika bekleyip şunu tekrar deneyin: certbot --nginx -d $DOMAIN"
+      warn "  1) DNS henüz tam yayılmadı — birkaç dakika bekleyip bu komutu aynen tekrar çalıştırın."
       warn "  2) Cloudflare gibi bir CDN/proxy kullanıyorsanız (turuncu bulut açık) bu BEKLENEN bir durumdur:"
       warn "     CDN zaten kendi ücretsiz HTTPS'ini sunar, siteniz https://${DOMAIN} üzerinden çalışmaya devam eder."
       warn "     Yine de kendi sunucunuzda sertifika istiyorsanız, CDN panelinde bu kaydı geçici olarak"
-      warn "     'DNS only' yapıp yukarıdaki certbot komutunu tekrar çalıştırın."
+      warn "     'DNS only' yapıp bu komutu tekrar çalıştırın."
     fi
   fi
 fi
