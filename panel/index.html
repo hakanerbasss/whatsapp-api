@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WhatsApp API Panel</title>
+<link rel="manifest" href="/manifest-admin.json">
+<meta name="theme-color" content="#25D366">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="WA Admin">
+<link rel="apple-touch-icon" href="/icons/icon.svg">
 <style>
 :root{--bg:#0a0e14;--surface:#0f1419;--card:#111820;--border:#1e2733;--accent:#25D366;--accent2:#00d4ff;--red:#ff4444;--yellow:#ffd700;--text:#e8f4f8;--muted:#4a6070;}
 [data-theme="light"]{--bg:#f0f4f8;--surface:#ffffff;--card:#ffffff;--border:#dde3ea;--accent:#25D366;--accent2:#0088cc;--red:#dc3545;--yellow:#f59e0b;--text:#1a2332;--muted:#6b7280;}
@@ -1143,6 +1150,11 @@ function closeModal() {
 document.getElementById('modal').addEventListener('click', (e) => {
   if (e.target.id === 'modal') closeModal();
 });
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>
