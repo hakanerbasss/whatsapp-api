@@ -94,6 +94,9 @@ fi
 ok "Baileys yaması tamamlandı"
 
 # ── 4) Boş port bul — sunucudaki BAŞKA HİÇBİR projeyi etkilemeden ──────────
+# Alan adı YOKSA: 80'den başla (müşteri hiçbir ayar yapmadan sadece http://IP yazsın, çalışsın).
+# Alan adı VARSA: nginx zaten aradaki köprü olacağı için uygulamanın kendisi 8000'den başlayan,
+# dışarıdan hiç görünmeyecek bir porta kurulur.
 find_free_port() {
   local p=$1
   while ss -tlnp 2>/dev/null | grep -q ":$p "; do p=$((p + 1)); done
@@ -102,9 +105,17 @@ find_free_port() {
 if [ -f "$DEST/.env" ] && grep -q "^PORT=" "$DEST/.env"; then
   PORT=$(grep "^PORT=" "$DEST/.env" | head -1 | cut -d= -f2)
   ok ".env zaten var, port korunuyor: $PORT"
-else
+elif [ -n "$DOMAIN" ]; then
   PORT=$(find_free_port 8000)
-  ok "Boş port otomatik bulundu: $PORT"
+  ok "Boş iç port otomatik bulundu: $PORT (dışarıya nginx üzerinden açılacak)"
+else
+  PORT=$(find_free_port 80)
+  if [ "$PORT" = "80" ]; then
+    ok "Port 80 boş, doğrudan kullanılıyor (alan adı/nginx gerekmez)"
+  else
+    warn "Port 80 doluydu (sunucuda başka bir site var), yerine $PORT kullanılacak."
+    warn "Bu porta dışarıdan erişim için güvenlik duvarınızda $PORT'u açmanız ya da DOMAIN= ile bir alan adı vermeniz gerekebilir."
+  fi
 fi
 
 if [ -f "$DEST/.env" ]; then
@@ -120,10 +131,29 @@ fi
 
 # ── 5) Alan adı verildiyse: nginx + SSL (yalnızca KENDİ dosyamız) ──────────
 SERVER_IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
-PUBLIC_URL="http://${SERVER_IP}:${PORT}"
+if [ "$PORT" = "80" ]; then
+  PUBLIC_URL="http://${SERVER_IP}"
+else
+  PUBLIC_URL="http://${SERVER_IP}:${PORT}"
+fi
 
 if [ -n "$DOMAIN" ]; then
   info "Alan adı belirtildi: $DOMAIN — nginx yapılandırılıyor..."
+
+  # DNS henüz hiç ayarlanmadıysa (alan adı hiçbir yere işaret etmiyorsa) en baştan açıkça söyle —
+  # farklı bir IP'ye işaret etmesi HATA DEĞİL (Cloudflare gibi bir CDN/proxy kullanılıyor olabilir,
+  # bu durumda gerçek IP değil CDN'in kendi adresi görünür ve bu normaldir).
+  DNS_HAZIR=0
+  if command -v getent &>/dev/null && getent ahosts "$DOMAIN" > /dev/null 2>&1; then
+    DNS_HAZIR=1
+  fi
+  if [ "$DNS_HAZIR" = "0" ]; then
+    warn "$DOMAIN şu an hiçbir yere işaret etmiyor gibi görünüyor."
+    warn "Alan adınızı yönettiğiniz yerde (Cloudflare, Namecheap, GoDaddy vb. — hangisini kullanıyorsanız)"
+    warn "bir A kaydı ekleyin:  isim: ${DOMAIN%%.*}   değer (IP): ${SERVER_IP}"
+    warn "Kaydı ekledikten birkaç dakika sonra AYNI komutu tekrar çalıştırın."
+  fi
+
   if ! command -v nginx &>/dev/null; then
     apt-get update -y -q && apt-get install -y -q nginx
   fi
@@ -155,18 +185,28 @@ EOF
   fi
 
   PUBLIC_URL="http://${DOMAIN}"
-  if [ -n "$SSL_EMAIL" ]; then
+  if [ -z "$SSL_EMAIL" ]; then
+    warn "SSL_EMAIL verilmedi, sertifika denenmedi. HTTPS için: DOMAIN=$DOMAIN SSL_EMAIL=siz@eposta.com bash install.sh"
+    warn "(Cloudflare gibi bir CDN kullanıyorsanız buna gerek olmayabilir — CDN zaten kendi ücretsiz HTTPS'ini sağlar.)"
+  elif [ "$DNS_HAZIR" = "0" ]; then
+    warn "DNS henüz hazır olmadığı için sertifika denenmedi. DNS kaydını ekleyip bu komutu aynen tekrar çalıştırın."
+  else
     info "SSL sertifikası alınıyor (Let's Encrypt)..."
     apt-get install -y -q certbot python3-certbot-nginx > /dev/null 2>&1
-    if certbot --nginx --non-interactive --agree-tos -m "$SSL_EMAIL" -d "$DOMAIN" > /dev/null 2>&1; then
+    # --no-redirect ÖNEMLİ: Cloudflare gibi bir CDN "Flexible" modundaysa (orijine düz HTTP ile
+    # bağlanır) port 80'i https'e zorlamak sonsuz yönlendirme döngüsü yaratır (ERR_TOO_MANY_REDIRECTS).
+    # Sertifika yine kurulur, 443 yine çalışır; yalnızca 80'den 443'e OTOMATİK zorlama kapatılır.
+    if certbot --nginx --non-interactive --agree-tos --no-redirect -m "$SSL_EMAIL" -d "$DOMAIN" > /dev/null 2>&1; then
       ok "SSL sertifikası kuruldu: https://${DOMAIN}"
       PUBLIC_URL="https://${DOMAIN}"
     else
-      warn "SSL alınamadı — $DOMAIN alan adının DNS A kaydı bu sunucunun IP'sine (${SERVER_IP}) işaret ettiğinden emin olup şunu tekrar deneyin:"
-      warn "  certbot --nginx -d $DOMAIN"
+      warn "SSL alınamadı. İki olası sebep var:"
+      warn "  1) DNS henüz tam yayılmadı — birkaç dakika bekleyip şunu tekrar deneyin: certbot --nginx -d $DOMAIN"
+      warn "  2) Cloudflare gibi bir CDN/proxy kullanıyorsanız (turuncu bulut açık) bu BEKLENEN bir durumdur:"
+      warn "     CDN zaten kendi ücretsiz HTTPS'ini sunar, siteniz https://${DOMAIN} üzerinden çalışmaya devam eder."
+      warn "     Yine de kendi sunucunuzda sertifika istiyorsanız, CDN panelinde bu kaydı geçici olarak"
+      warn "     'DNS only' yapıp yukarıdaki certbot komutunu tekrar çalıştırın."
     fi
-  else
-    warn "SSL_EMAIL verilmedi, sertifika atlandı. HTTPS için: DOMAIN=$DOMAIN SSL_EMAIL=siz@eposta.com bash install.sh"
   fi
 fi
 
