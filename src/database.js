@@ -178,6 +178,15 @@ function isFirstLimitExceed(customerId) {
   return true;
 }
 
+// Bugün ilk kez kota %80'e ulaşıldıysa true döner (tekrar bildirim gönderme)
+function isFirstQuotaWarning(customerId) {
+  const today = new Date().toISOString().split('T')[0];
+  const key = `quota80_notif_${customerId}_${today}`;
+  if (getSetting(key)) return false;
+  setSetting(key, '1');
+  return true;
+}
+
 function getTodayUsage(customerId) {
   const today = new Date().toISOString().split('T')[0];
   return get('SELECT count FROM daily_usage WHERE customer_id=? AND date=?',[customerId,today])?.count || 0;
@@ -369,4 +378,4 @@ function cancelScheduledJob(id, customerId) {
   return true;
 }
 
-module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getScheduledJobForCustomer, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob, archiveChat, unarchiveChat, getArchivedPhones, deleteChatHistory, getTotalUnreadCount, addPushSubscription, removePushSubscription, getPushSubscriptions };
+module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, isFirstQuotaWarning, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getScheduledJobForCustomer, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob, archiveChat, unarchiveChat, getArchivedPhones, deleteChatHistory, getTotalUnreadCount, addPushSubscription, removePushSubscription, getPushSubscriptions };

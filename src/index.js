@@ -344,6 +344,33 @@ async function notifyLimitExceeded(customer) {
   }
 }
 
+// Kota %80'e ulaşınca müşteriyi önceden uyar (günde 1 kez) — kota tam dolup mesajlar
+// reddedilmeden önce planını yükseltmesi için fırsat versin.
+async function notifyQuotaWarning(customer, used) {
+  try {
+    if (!db.isFirstQuotaWarning(customer.id)) return;
+    const baseUrl = db.getSetting('base_url') || `http://localhost:${PORT}`;
+    await push.sendToCustomer(customer.id, {
+      title: 'Günlük kotanız dolmak üzere',
+      body: `Bugün ${used}/${customer.daily_limit} mesaj gönderdiniz. Kotanız dolmadan önce planınızı yükseltebilirsiniz.`,
+      url: '/musteri?token=' + customer.token
+    }).catch(() => {});
+  } catch(e) {
+    console.error('Kota uyarı bildirim hatası:', e.message);
+  }
+}
+
+// checkAndIncrementUsage'ı sarmalar: kullanım izni aynı kalır, ayrıca kota %80'i ilk kez
+// aşıldığında proaktif bildirim tetikler. Tüm /api/send* uçları aynı sarmalayıcıyı kullanır.
+function trackUsage(customer) {
+  const allowed = db.checkAndIncrementUsage(customer.id, customer.daily_limit);
+  if (allowed) {
+    const used = db.getTodayUsage(customer.id);
+    if (used / customer.daily_limit >= 0.8) notifyQuotaWarning(customer, used).catch(() => {});
+  }
+  return allowed;
+}
+
 // Tek müşteriye mesaj gönder
 app.post('/api/admin/customers/:id/message', adminAuth, async (req, res) => {
   const { message } = req.body;
@@ -455,7 +482,7 @@ app.post('/api/send', customerAuth, rateLimit, async (req, res) => {
   // Limit kontrol — demo'da toplam mesaj, diğerlerinde günlük
   const isDemoExpired = req.customer.plan === 'demo' &&
     db.getTotalUsage(req.customer.id) >= req.customer.daily_limit;
-  const allowed = isDemoExpired ? false : db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
+  const allowed = isDemoExpired ? false : trackUsage(req.customer);
 
   if (!allowed) {
     db.logMessage(req.customer.id, to, 'text', 'limit_exceeded');
@@ -484,7 +511,7 @@ app.post('/api/send/image', customerAuth, rateLimit, async (req, res) => {
   const { to, url, caption } = req.body;
   if (!to || !url) return res.status(400).json({ error: 'to ve url gerekli' });
 
-  const allowed = db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
+  const allowed = trackUsage(req.customer);
   if (!allowed) {
     notifyLimitExceeded(req.customer).catch(() => {});
     return res.status(429).json({ error: 'Günlük limit aşıldı' });
@@ -504,7 +531,7 @@ app.post('/api/send/document', customerAuth, rateLimit, async (req, res) => {
   const { to, url, filename, mimetype } = req.body;
   if (!to || !url) return res.status(400).json({ error: 'to ve url gerekli' });
 
-  const allowed = db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
+  const allowed = trackUsage(req.customer);
   if (!allowed) {
     notifyLimitExceeded(req.customer).catch(() => {});
     return res.status(429).json({ error: 'Günlük limit aşıldı' });
@@ -528,7 +555,7 @@ app.post('/api/send/audio', customerAuth, rateLimit, async (req, res) => {
   const { to, url } = req.body;
   if (!to || !url) return res.status(400).json({ error: 'to ve url gerekli' });
 
-  const allowed = db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
+  const allowed = trackUsage(req.customer);
   if (!allowed) {
     notifyLimitExceeded(req.customer).catch(() => {});
     return res.status(429).json({ error: 'Günlük limit aşıldı' });
@@ -548,7 +575,7 @@ app.post('/api/send/location', customerAuth, rateLimit, async (req, res) => {
   const { to, latitude, longitude, name, address } = req.body;
   if (!to || latitude == null || longitude == null) return res.status(400).json({ error: 'to, latitude ve longitude gerekli' });
 
-  const allowed = db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
+  const allowed = trackUsage(req.customer);
   if (!allowed) {
     notifyLimitExceeded(req.customer).catch(() => {});
     return res.status(429).json({ error: 'Günlük limit aşıldı' });
@@ -570,7 +597,7 @@ app.post('/api/send/live-location', customerAuth, rateLimit, async (req, res) =>
   const { to, latitude, longitude, name, address, duration_seconds } = req.body;
   if (!to || latitude == null || longitude == null) return res.status(400).json({ error: 'to, latitude ve longitude gerekli' });
 
-  const allowed = db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
+  const allowed = trackUsage(req.customer);
   if (!allowed) {
     notifyLimitExceeded(req.customer).catch(() => {});
     return res.status(429).json({ error: 'Günlük limit aşıldı' });
@@ -605,7 +632,7 @@ app.post('/api/send/contact', customerAuth, rateLimit, async (req, res) => {
   const { to, contact_name, contact_phone } = req.body;
   if (!to || !contact_name || !contact_phone) return res.status(400).json({ error: 'to, contact_name ve contact_phone gerekli' });
 
-  const allowed = db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
+  const allowed = trackUsage(req.customer);
   if (!allowed) {
     notifyLimitExceeded(req.customer).catch(() => {});
     return res.status(429).json({ error: 'Günlük limit aşıldı' });
@@ -707,7 +734,7 @@ app.post('/api/send/bulk', customerAuth, async (req, res) => {
 
   const results = [];
   for (const msg of messages.slice(0, 50)) { // Max 50
-    const allowed = db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
+    const allowed = trackUsage(req.customer);
     if (!allowed) {
       notifyLimitExceeded(req.customer).catch(() => {});
       results.push({ to: msg.to, ok: false, error: 'Limit aşıldı' });
@@ -791,7 +818,7 @@ app.post('/api/send/media', customerAuth, rateLimit, upload.single('file'), asyn
   const { to, caption, filename, ptt } = req.body;
   if (!to || !req.file) return res.status(400).json({ error: 'to ve file gerekli' });
 
-  const allowed = db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
+  const allowed = trackUsage(req.customer);
   if (!allowed) return res.status(429).json({ error: 'Günlük limit aşıldı' });
 
   try {
@@ -1167,7 +1194,7 @@ app.post('/api/chat/:phone/send', customerAuth, upload.single('file'), async (re
   const phone = wa.normalizePhone(req.params.phone);
   const { text, ptt } = req.body;
 
-  const allowed = db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
+  const allowed = trackUsage(req.customer);
   if (!allowed) {
     if (req.file) fs.unlinkSync(req.file.path);
     return res.status(429).json({ error: 'Günlük mesaj limitinize ulaştınız' });
