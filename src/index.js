@@ -9,6 +9,7 @@ const fs = require('fs');
 const db = require('./database');
 const wa = require('./whatsapp');
 const scheduler = require('./scheduler');
+const backup = require('./backup');
 const push = require('./push');
 
 const app = express();
@@ -381,6 +382,8 @@ app.get('/api/admin/settings', adminAuth, (req, res) => {
     contact_email:   db.getSetting('contact_email') || '',
     contact_message: db.getSetting('contact_message') || 'Mesaj limitinize ulaştınız. Devam etmek için iletişime geçin.',
     cors_origins:    db.getSetting('cors_origins') || '',
+    backup_enabled:  db.getSetting('backup_enabled') !== '0',
+    backup_retention: parseInt(db.getSetting('backup_retention')) || 7,
     packages: JSON.parse(db.getSetting('packages') || JSON.stringify([
       { id: 'basic',     name: 'Basic',     limit: 100,  price: '150₺/ay', desc: 'Küçük işletmeler için' },
       { id: 'pro',       name: 'Pro',       limit: 500,  price: '300₺/ay', desc: 'Büyüyen işletmeler için' },
@@ -391,11 +394,13 @@ app.get('/api/admin/settings', adminAuth, (req, res) => {
 
 // Ayarları kaydet
 app.post('/api/admin/settings', adminAuth, (req, res) => {
-  const { contact_phone, contact_email, contact_message, cors_origins, packages } = req.body;
+  const { contact_phone, contact_email, contact_message, cors_origins, backup_enabled, backup_retention, packages } = req.body;
   if (contact_phone   !== undefined) db.setSetting('contact_phone',   contact_phone);
   if (contact_email   !== undefined) db.setSetting('contact_email',   contact_email);
   if (contact_message !== undefined) db.setSetting('contact_message', contact_message);
   if (cors_origins    !== undefined) db.setSetting('cors_origins',    cors_origins);
+  if (backup_enabled  !== undefined) db.setSetting('backup_enabled', backup_enabled ? '1' : '0');
+  if (backup_retention !== undefined) db.setSetting('backup_retention', String(parseInt(backup_retention) || 7));
   if (packages        !== undefined) db.setSetting('packages', JSON.stringify(packages));
   logAdminAction(req, 'settings.update', null, { fields: Object.keys(req.body || {}) });
   res.json({ ok: true });
@@ -541,6 +546,37 @@ app.get('/api/admin/audit-log', adminAuth, (req, res) => {
   const offset = parseInt(req.query.offset) || 0;
   const rows = db.getAuditLog({ limit, offset }).map(r => ({ ...r, details: r.details ? JSON.parse(r.details) : null }));
   res.json({ ok: true, entries: rows });
+});
+
+// ── YEDEKLEME ─────────────────────────────────────────────────────
+// Yalnızca veritabanı + WhatsApp oturumları (bkz. backup.js) — medya dahil değil.
+app.get('/api/admin/backups', adminAuth, (req, res) => {
+  res.json({ ok: true, backups: backup.listBackups() });
+});
+
+app.post('/api/admin/backups/run', adminAuth, async (req, res) => {
+  try {
+    const filename = await backup.createBackup();
+    const retention = parseInt(db.getSetting('backup_retention')) || 7;
+    backup.pruneOldBackups(retention);
+    logAdminAction(req, 'backup.create', filename, {});
+    res.json({ ok: true, filename });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/admin/backups/:filename/download', adminAuth, (req, res) => {
+  const full = backup.getBackupPath(req.params.filename);
+  if (!full) return res.status(404).json({ error: 'Yedek bulunamadı' });
+  res.download(full);
+});
+
+app.delete('/api/admin/backups/:filename', adminAuth, (req, res) => {
+  const ok = backup.deleteBackup(req.params.filename);
+  if (!ok) return res.status(404).json({ error: 'Yedek bulunamadı' });
+  logAdminAction(req, 'backup.delete', req.params.filename, {});
+  res.json({ ok: true });
 });
 
 // Plan yükselt + otomatik WhatsApp mesajı
@@ -1487,6 +1523,7 @@ app.listen(PORT, async () => {
   await wa.restoreConnections();
 
   scheduler.start();
+  backup.start();
   console.log('✅ Hazır!\n');
 
   // Süresi dolmuş müşterileri otomatik askıya al (her saat kontrol)

@@ -66,6 +66,12 @@ function saveDb() {
   try { fs.writeFileSync(DB_PATH, Buffer.from(db.export())); } catch(e) {}
 }
 
+// Yedekleme için — db.export() bellekteki ANLIK tutarlı durumu döner (dosyayı kopyalamaktan
+// farklı olarak, aynı anda süren bir yazmayla yarışmaz, çünkü Node tek iş parçacıklıdır).
+function exportSnapshot() {
+  return Buffer.from(getDb().export());
+}
+
 function getDb() {
   if (!db) throw new Error('DB henüz başlatılmadı.');
   return db;
@@ -499,4 +505,4 @@ function cancelScheduledJob(id, customerId) {
   return true;
 }
 
-module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, isFirstQuotaWarning, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, mergeContactPhone, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getScheduledJobForCustomer, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob, archiveChat, unarchiveChat, getArchivedPhones, deleteChatHistory, getTotalUnreadCount, addPushSubscription, removePushSubscription, getPushSubscriptions, addAuditLog, getAuditLog };
+module.exports = { initDb, saveDb, exportSnapshot, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, isFirstQuotaWarning, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, mergeContactPhone, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getScheduledJobForCustomer, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob, archiveChat, unarchiveChat, getArchivedPhones, deleteChatHistory, getTotalUnreadCount, addPushSubscription, removePushSubscription, getPushSubscriptions, addAuditLog, getAuditLog };

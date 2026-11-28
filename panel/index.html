@@ -165,6 +165,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
         <div class="nav-item" onclick="showPage('broadcast')" id="nav-broadcast"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg> Duyuru</div>
         <div class="nav-item" onclick="showPage('links')" id="nav-links"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Sayfalar</div>
         <div class="nav-item" onclick="showPage('audit')" id="nav-audit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> İşlem Kaydı</div>
+        <div class="nav-item" onclick="showPage('backups')" id="nav-backups"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg> Yedekler</div>
       </nav>
       <div style="padding:16px;border-top:1px solid var(--border)">
         <button class="btn btn-ghost" style="width:100%;font-size:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px" onclick="logout()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg> Çıkış</button>
@@ -370,6 +371,7 @@ function showPage(page) {
   else if (page === 'broadcast') renderBroadcast();
   else if (page === 'links') renderLinks();
   else if (page === 'audit') renderAuditLog();
+  else if (page === 'backups') renderBackups();
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────
@@ -1057,6 +1059,109 @@ async function renderAuditLog() {
       <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Son ${entries.length} işlem — en yeni üstte. Müşteri token/şifre gibi hassas değerler burada hiç tutulmaz.</div>
       ${rows || '<div style="text-align:center;color:var(--muted);padding:30px">Henüz kayıtlı işlem yok</div>'}
     </div>`;
+}
+
+function formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1024/1024).toFixed(1) + ' MB';
+}
+
+async function renderBackups() {
+  document.getElementById('page-title').textContent = 'Yedekler';
+  document.getElementById('topbar-actions').innerHTML = '';
+
+  const [s, b] = await Promise.all([apiFetch('/api/admin/settings'), apiFetch('/api/admin/backups')]);
+  const backups = b.backups || [];
+  backupEnabledPref = !!s.backup_enabled;
+
+  const rows = backups.map(f => `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+      <div style="flex:1">
+        <div style="font-family:monospace;font-size:12px">${f.filename}</div>
+        <div style="font-size:11px;color:var(--muted)">${new Date(f.created_at).toLocaleString('tr-TR')} · ${formatBytes(f.size)}</div>
+      </div>
+      <button class="btn btn-ghost" style="padding:6px 10px" onclick="downloadBackup('${f.filename}')" title="İndir">${ICON_SAVE}</button>
+      <button class="btn btn-danger" style="padding:6px 10px" onclick="deleteBackupFile('${f.filename}')" title="Sil">${ICON_TRASH}</button>
+    </div>`).join('');
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="card">
+      <div class="card-title">🗄️ Otomatik Yedekleme</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Yalnızca veritabanı (müşteriler, mesajlar, ayarlar) ve WhatsApp oturumları yedeklenir —
+        medya dosyaları (fotoğraf/video) dahil değildir, disk alanını büyük tutmasın diye.
+        Yedekler bu sunucuda tutulur; gerçek bir felaket korumasına sahip olmak için düzenli
+        aralıklarla indirip sunucu dışında saklamanızı öneririz.
+      </p>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px">
+        <div style="font-size:13px">Otomatik yedekleme (her gün)</div>
+        <button id="backup-enabled-toggle" onclick="toggleBackupEnabled()" style="flex-shrink:0;width:42px;height:24px;border-radius:12px;border:none;cursor:pointer;position:relative;background:${s.backup_enabled ? 'var(--accent)' : 'var(--border)'};transition:background .2s">
+          <span id="backup-enabled-dot" style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .2s;transform:translateX(${s.backup_enabled ? '18px' : '0'})"></span>
+        </button>
+      </div>
+      <div class="field">
+        <label>Saklanacak yedek sayısı (eski olanlar otomatik silinir)</label>
+        <input type="number" id="backup-retention" value="${s.backup_retention}" min="1" style="max-width:120px">
+      </div>
+      <button class="btn btn-primary" style="margin-right:8px" onclick="saveBackupSettings()">Kaydet</button>
+      <button class="btn btn-green" onclick="runBackupNow()" style="display:inline-flex;align-items:center;gap:6px">${ICON_REFRESH} Şimdi Yedekle</button>
+      <div id="backup-result" style="margin-top:10px;font-size:13px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Mevcut Yedekler (${backups.length})</div>
+      ${rows || '<div style="text-align:center;color:var(--muted);padding:30px">Henüz yedek yok</div>'}
+    </div>`;
+}
+
+let backupEnabledPref = true;
+function toggleBackupEnabled() {
+  backupEnabledPref = !backupEnabledPref;
+  const toggle = document.getElementById('backup-enabled-toggle');
+  const dot = document.getElementById('backup-enabled-dot');
+  toggle.style.background = backupEnabledPref ? 'var(--accent)' : 'var(--border)';
+  dot.style.transform = backupEnabledPref ? 'translateX(18px)' : 'translateX(0)';
+}
+
+async function saveBackupSettings() {
+  const retention = parseInt(document.getElementById('backup-retention').value) || 7;
+  const r = await apiFetch('/api/admin/settings', {
+    method: 'POST',
+    body: JSON.stringify({ backup_enabled: backupEnabledPref, backup_retention: retention })
+  });
+  const el = document.getElementById('backup-result');
+  el.innerHTML = r.ok ? '<span style="color:var(--accent)">✅ Kaydedildi!</span>' : `<span style="color:var(--red)">❌ Hata: ${r.error}</span>`;
+}
+
+async function runBackupNow() {
+  const el = document.getElementById('backup-result');
+  el.textContent = '⏳ Yedekleniyor...';
+  const r = await apiFetch('/api/admin/backups/run', { method: 'POST' });
+  if (r.ok) { uiToast('Yedek alındı: ' + r.filename, 'ok'); renderBackups(); }
+  else { el.innerHTML = `<span style="color:var(--red)">❌ Hata: ${r.error}</span>`; }
+}
+
+async function downloadBackup(filename) {
+  try {
+    const r = await fetch(`/api/admin/backups/${encodeURIComponent(filename)}/download`, {
+      headers: { 'Authorization': 'Bearer ' + adminToken }
+    });
+    if (!r.ok) throw new Error('İndirilemedi');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    uiToast('İndirme hatası: ' + e.message, 'err');
+  }
+}
+
+async function deleteBackupFile(filename) {
+  if (!await uiConfirm(`"${filename}" silinsin mi?`, { danger: true, confirmLabel: 'Sil' })) return;
+  await apiFetch(`/api/admin/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  renderBackups();
 }
 
 function openAddBlacklist() {
