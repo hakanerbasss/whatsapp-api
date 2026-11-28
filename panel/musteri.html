@@ -177,6 +177,12 @@ input:focus{border-color:var(--accent);}
           <span id="notify-scheduled-dot" style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .2s"></span>
         </button>
       </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;color:var(--text)">Gelen mesajlarda bildir <span style="color:var(--muted)">(telefonunuzda WhatsApp kuruluysa zaten bildirim alırsınız, kapatabilirsiniz)</span></div>
+        <button id="notify-incoming-toggle" onclick="toggleIncomingNotify()" title="Gelen mesaj bildirimleri" style="flex-shrink:0;width:42px;height:24px;border-radius:12px;border:none;cursor:pointer;position:relative;background:var(--border);transition:background .2s">
+          <span id="notify-incoming-dot" style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .2s"></span>
+        </button>
+      </div>
     </div>
 
     <!-- API Token -->
@@ -412,6 +418,8 @@ async function loadDashboard(token) {
 function renderDashboard(d, token) {
   notifyScheduledPref = d.notify_scheduled !== false;
   renderScheduledNotifyToggle();
+  notifyIncomingPref = d.notify_incoming_messages !== false;
+  renderIncomingNotifyToggle();
 
   document.getElementById('d-name').textContent = d.name;
   const planBadge = document.getElementById('d-plan-badge');
@@ -827,6 +835,37 @@ async function toggleScheduledNotify() {
   } catch (e) {
     notifyScheduledPref = !notifyScheduledPref;
     renderScheduledNotifyToggle();
+    uiToast('Kaydedilemedi: ' + e.message, 'err');
+  }
+}
+
+// Gerçek WhatsApp uygulaması zaten gelen mesaj için bildirim attığından, bu panelin AYNI mesaj
+// için ikinci bir bildirim atmasını isteyip istemediği — ana "bildirimleri aç" anahtarından
+// bağımsız, kendi tercihi (WhatsApp kurulu değilse açık kalması faydalı).
+let notifyIncomingPref = true;
+
+function renderIncomingNotifyToggle() {
+  const toggle = document.getElementById('notify-incoming-toggle');
+  const dot = document.getElementById('notify-incoming-dot');
+  if (!toggle) return;
+  toggle.style.background = notifyIncomingPref ? 'var(--accent)' : 'var(--border)';
+  dot.style.transform = notifyIncomingPref ? 'translateX(18px)' : 'translateX(0)';
+}
+
+async function toggleIncomingNotify() {
+  notifyIncomingPref = !notifyIncomingPref;
+  renderIncomingNotifyToggle();
+  try {
+    const r = await fetch('/api/notify-prefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-token': currentToken },
+      body: JSON.stringify({ notify_incoming_messages: notifyIncomingPref })
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+  } catch (e) {
+    notifyIncomingPref = !notifyIncomingPref;
+    renderIncomingNotifyToggle();
     uiToast('Kaydedilemedi: ' + e.message, 'err');
   }
 }

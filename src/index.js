@@ -788,7 +788,11 @@ app.post('/api/push/unsubscribe', customerAuth, (req, res) => {
 // Zamanlanmış/periyodik gönderimler tamamlandığında (ya da başarısız olduğunda) ayrıca
 // bildirim gönderilsin mi — ana "bildirimleri aç" anahtarından bağımsız, kendi tercihi.
 app.post('/api/notify-prefs', customerAuth, (req, res) => {
-  db.updateCustomer(req.customer.id, { notify_scheduled: req.body?.notify_scheduled ? 1 : 0 });
+  const b = req.body || {};
+  const update = {};
+  if (b.notify_scheduled !== undefined) update.notify_scheduled = b.notify_scheduled ? 1 : 0;
+  if (b.notify_incoming_messages !== undefined) update.notify_incoming_messages = b.notify_incoming_messages ? 1 : 0;
+  if (Object.keys(update).length) db.updateCustomer(req.customer.id, update);
   res.json({ ok: true });
 });
 
@@ -1381,6 +1385,7 @@ app.get('/api/musteri/dashboard', customerAuthDashboard, (req, res) => {
     expires_at: c.expires_at, is_expired: isExpired, is_limit_done: isLimitDone,
     wa_status: conn.status, wa_number: conn.phone,
     notify_scheduled: !!c.notify_scheduled,
+    notify_incoming_messages: !!c.notify_incoming_messages,
     packages: JSON.parse(db.getSetting('packages') || '[]'),
     contact: {
       phone: db.getSetting('contact_phone') || null,

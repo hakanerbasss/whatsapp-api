@@ -248,6 +248,10 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
     if (type !== 'notify') return;
     messages.forEach(async msg => {
       if (msg.key.fromMe) return;
+      // WhatsApp "Durum" (status/story) paylaşımları özel bir yayın kimliğinden (status@broadcast)
+      // gelir — bu bir sohbet mesajı değil, kişinin herkese açık durumu. Gerçek WhatsApp bunun
+      // için bildirim göndermez; burada da sohbet geçmişine eklenmemeli ve bildirim tetiklememeli.
+      if (msg.key.remoteJid === 'status@broadcast') return;
       const isGroup = msg.key.remoteJid?.endsWith('@g.us');
       // WhatsApp bazı kişileri gerçek telefon numarası yerine dahili "LID" (Linked ID) ile
       // adresler — bu durumda remoteJid rehberdeki hiçbir numarayla eşleşmeyen, uzun, rastgele
@@ -314,6 +318,9 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
       waEvents.emit(`chat_${customerId}_${phone}`, { event: 'message', ...row });
 
       const contact = db.getContactByPhone(customerId, phone);
+      // Sohbet geçmişine her zaman eklenir (yukarıda); push bildirimi ayrı bir tercih — gerçek
+      // WhatsApp uygulaması zaten bildirim attığı için bazı müşteriler bunu kapatmak isteyebilir.
+      if (customer?.notify_incoming_messages === 0) return;
       const typeLabel = { image: '📷 Fotoğraf', video: '🎬 Video', audio: '🎤 Sesli mesaj', document: '📄 Belge', location: '📍 Konum', contact: '👤 Kişi', sticker: '🌟 Çıkartma' };
       push.sendToCustomer(customerId, {
         title: contact?.name || phone,

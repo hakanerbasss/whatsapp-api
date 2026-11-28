@@ -122,6 +122,9 @@ function migrate() {
     // mevcut müşteriler ayrıca "kapalı" görünmesin diye varsayılan açık (1).
     { table: 'customers', column: 'notify_scheduled', ddl: 'ALTER TABLE customers ADD COLUMN notify_scheduled INTEGER DEFAULT 1' },
     { table: 'customers', column: 'token_enc', ddl: 'ALTER TABLE customers ADD COLUMN token_enc TEXT' },
+    // Mevcut müşteriler bugüne kadarki davranışı (gelen mesajda bildirim) kaybetmesin diye
+    // varsayılan açık (1) — kapatmak isteyen Bildirimler kartından kendi kapatır.
+    { table: 'customers', column: 'notify_incoming_messages', ddl: 'ALTER TABLE customers ADD COLUMN notify_incoming_messages INTEGER DEFAULT 1' },
   ];
   for (const m of columnAdditions) {
     const existing = all(`PRAGMA table_info(${m.table})`).map(c => c.name);
