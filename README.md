@@ -1,5 +1,7 @@
 # WhatsApp API
 
+**v1.0.0** · Geliştirici: Hakan Erbaş (iletişim bilgileri en altta)
+
 Kendi sunucunuzda, kendi verinizle çalışan WhatsApp API ve toplu mesaj paneli. Müşteri yönetimi, mesaj limiti, kara liste ve toplu mesaj gönderimi dahil.
 
 ## Kurulum — tek komut
@@ -79,3 +81,12 @@ pm2 start whatsapp-api
 ## Ne yapmaz
 
 Bu bir bilgilendirme/otomasyon aracıdır; WhatsApp'ın resmî bir ürünü değildir, resmî API'si yerine geçmez. Kendi sorumluluğunuzda, kendi sunucunuzda çalışır — veriler yalnızca sizin sunucunuzda tutulur.
+
+## İletişim / Geliştirici
+
+**Hakan Erbaş** — İstanbul, Türkiye
+
+- WhatsApp: [+90 553 093 03 25](https://wa.me/905530930325)
+- E-posta: [wizaicorp@gmail.com](mailto:wizaicorp@gmail.com) · [hakanerbasss@gmail.com](mailto:hakanerbasss@gmail.com)
+
+Kurulumla ilgili bir sorun yaşarsanız ya da özellik önerisi/talebiniz varsa yukarıdaki kanallardan ulaşabilirsiniz. Uygulama içinde aynı bilgiler **Hesabım → Geliştirici** bölümünde de yer alır.
