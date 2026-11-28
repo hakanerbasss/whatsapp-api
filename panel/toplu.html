@@ -90,7 +90,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 <!-- Token Giriş -->
 <div id="login-wrap" class="login-wrap" style="display:none">
   <div class="login-box">
-    <div style="font-size:48px;margin-bottom:12px">📤</div>
+    <div style="margin-bottom:12px;color:var(--accent)"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></div>
     <h2 style="margin-bottom:6px">Toplu Mesaj</h2>
     <p style="color:var(--muted);font-size:13px;margin-bottom:20px">API Token ile giriş yapın</p>
     <input type="text" id="login-token" placeholder="Token...">
@@ -177,6 +177,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
       </div>
     </div>
 
+    <!-- Düzenleme modu bandı — bir zamanlanmış/periyodik işi düzenlerken görünür -->
+    <div id="edit-banner" style="display:none;align-items:center;justify-content:space-between;gap:8px;background:rgba(0,212,255,.1);border:1px solid var(--accent2);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--accent2);font-weight:600">
+      <span id="edit-banner-text"></span>
+      <button class="btn btn-ghost" style="padding:5px 10px;font-size:11px" onclick="cancelEditJob()">Vazgeç</button>
+    </div>
+
     <!-- Mesaj Bölümü -->
     <div class="card">
       <div class="card-title">Mesaj</div>
@@ -209,7 +215,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
         <div id="img-tab-gallery">
           <div class="field">
             <div class="upload-area" id="img-upload-area" onclick="document.getElementById('img-file').click()">
-              <div style="font-size:32px;margin-bottom:8px">🖼</div>
+              <div style="margin-bottom:8px;color:var(--muted)"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></div>
               <div style="font-size:13px;color:var(--muted)">Galeriden seç veya tıkla</div>
               <input type="file" id="img-file" accept="image/*" style="display:none" onchange="onFileSelect('img')">
             </div>
@@ -224,9 +230,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
             <canvas id="cam-canvas" style="display:none"></canvas>
             <div id="cam-preview" style="margin-top:8px"></div>
             <div style="display:flex;justify-content:center;gap:10px;margin-top:10px">
-              <button id="cam-start-btn" onclick="startCamera()" style="padding:10px 20px;border-radius:50px;border:none;background:var(--accent2);color:#000;font-size:13px;font-weight:700;cursor:pointer">📷 Kamerayı Aç</button>
-              <button id="cam-snap-btn" onclick="snapPhoto()" style="display:none;padding:10px 20px;border-radius:50px;border:none;background:var(--accent);color:#000;font-size:13px;font-weight:700;cursor:pointer">⚡ Çek</button>
-              <button id="cam-retry-btn" onclick="retryCamera()" style="display:none;padding:10px 20px;border-radius:50px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;cursor:pointer">🔄 Yeniden Çek</button>
+              <button id="cam-start-btn" onclick="startCamera()" style="padding:10px 20px;border-radius:50px;border:none;background:var(--accent2);color:#000;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg> Kamerayı Aç</button>
+              <button id="cam-snap-btn" onclick="snapPhoto()" style="display:none;padding:10px 20px;border-radius:50px;border:none;background:var(--accent);color:#000;font-size:13px;font-weight:700;cursor:pointer;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> Çek</button>
+              <button id="cam-retry-btn" onclick="retryCamera()" style="display:none;padding:10px 20px;border-radius:50px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;cursor:pointer;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg> Yeniden Çek</button>
             </div>
             <div id="cam-status" style="font-size:11px;color:var(--muted);margin-top:8px">Fotoğraf çekmek için kamerayı açın</div>
           </div>
@@ -243,7 +249,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
         <div class="field">
           <label>Video Seç</label>
           <div class="upload-area" id="vid-upload-area" onclick="document.getElementById('vid-file').click()">
-            <div style="font-size:32px;margin-bottom:8px">🎬</div>
+            <div style="margin-bottom:8px;color:var(--muted)"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg></div>
             <div style="font-size:13px;color:var(--muted)">Video seç (max 20MB)</div>
             <input type="file" id="vid-file" accept="video/*" style="display:none" onchange="onFileSelect('vid')">
           </div>
@@ -260,7 +266,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
         <div class="field">
           <label>Dosya Seç</label>
           <div class="upload-area" id="doc-upload-area" onclick="document.getElementById('doc-file').click()">
-            <div style="font-size:32px;margin-bottom:8px">📄</div>
+            <div style="margin-bottom:8px;color:var(--muted)"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></div>
             <div style="font-size:13px;color:var(--muted)">Dosya seç (PDF, Excel, Word...)</div>
             <input type="file" id="doc-file" style="display:none" onchange="onFileSelect('doc')">
           </div>
@@ -289,7 +295,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
         <div id="audio-tab-file" style="display:none">
           <div class="field">
             <div class="upload-area" id="audio-upload-area" onclick="document.getElementById('audio-file').click()">
-              <div style="font-size:32px;margin-bottom:8px">🔊</div>
+              <div style="margin-bottom:8px;color:var(--muted)"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg></div>
               <div style="font-size:13px;color:var(--muted)">Ses dosyası seç (MP3, OGG, AAC, WAV)</div>
               <input type="file" id="audio-file" accept="audio/*" style="display:none" onchange="onAudioFileSelect()">
             </div>
@@ -326,7 +332,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
         <!-- Harita -->
         <div style="position:relative">
           <div id="leaflet-map" style="height:280px;border-radius:10px;overflow:hidden;border:1px solid var(--border)"></div>
-          <button id="gps-map-btn" onclick="goToMyLocation()" style="position:absolute;bottom:10px;right:10px;z-index:999;padding:8px 14px;border-radius:50px;border:none;background:rgba(15,20,25,.85);color:var(--accent2);font-size:12px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px)">📡 Konumuma Git</button>
+          <button id="gps-map-btn" onclick="goToMyLocation()" style="position:absolute;bottom:10px;right:10px;z-index:999;padding:8px 14px;border-radius:50px;border:none;background:rgba(15,20,25,.85);color:var(--accent2);font-size:12px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px);display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg> Konumuma Git</button>
         </div>
         <div id="map-selected" style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;min-height:16px">Haritaya tıklayın veya adres arayın</div>
 
@@ -407,7 +413,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
           </select>
           <div style="font-size:11px;color:var(--muted);margin:4px 0 8px;line-height:1.6" id="recurrence-hint">Seçtiğiniz tarih/saat yalnızca ilk gönderim için kullanılır. Tekrar seçerseniz (örn. "Her hafta"), yukarıda seçtiğiniz gün ve saat kalıcı olur — mesela Pazartesi 02:00 seçip "Her hafta" işaretlerseniz her Pazartesi 02:00'de otomatik gönderilir. Bu kişiler ve mesaj değişmeden tekrar eder; durdurmak için aşağıdan iptal edebilirsiniz.</div>
           <button class="btn btn-wa btn-full" id="schedule-btn" onclick="scheduleSending()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Zamanla
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> <span id="schedule-btn-label">Zamanla</span>
           </button>
         </div>
       </div>
@@ -468,6 +474,7 @@ let recordInterval = null;
 let locMode = 'normal';
 let leafletMap = null, leafletMarker = null;
 let searchTimer = null;
+let editingJobId = null;
 
 // ── KONUM ────────────────────────────────────────────────────────
 function setLocType(type, el) {
@@ -803,7 +810,11 @@ async function migrateLegacyContacts() {
 async function loadContacts() {
   await migrateLegacyContacts();
   const data = await api('/api/contacts');
+  // _temp satırlar bir işi düzenlerken Rehber'den silinmiş ama hâlâ o işin alıcısı olan
+  // kişiler için eklenir — Rehber yeniden yüklense bile (ör. yeni kişi eklenince) kaybolmasınlar.
+  const temps = contacts.filter(c => c._temp);
   contacts = (data.contacts || []).map(c => ({ ...c, selected: selectedPhones.has(c.phone) }));
+  temps.forEach(t => { if (!contacts.find(c => c.phone === t.phone)) contacts.push({ ...t, selected: selectedPhones.has(t.phone) }); });
   renderContacts();
 }
 
@@ -1233,12 +1244,12 @@ async function scheduleSending() {
     } else if (msgType === 'audio') {
       if (audioMode === 'url') {
         const url = document.getElementById('audio-url').value.trim();
-        if (!url) throw new Error('Ses URL gerekli');
-        fd.append('audio_url', url);
+        if (!url && !editingJobId) throw new Error('Ses URL gerekli');
+        if (url) fd.append('audio_url', url);
       } else {
         const blob = audioMode === 'file' ? audioFileBlob : audioRecordBlob;
-        if (!blob) throw new Error(audioMode === 'file' ? 'Dosya seçilmedi' : 'Ses kaydedilmedi');
-        fd.append('file', blob, audioMode === 'file' ? (audioFileName || 'ses.mp3') : 'kayit.ogg');
+        if (!blob && !editingJobId) throw new Error(audioMode === 'file' ? 'Dosya seçilmedi' : 'Ses kaydedilmedi');
+        if (blob) fd.append('file', blob, audioMode === 'file' ? (audioFileName || 'ses.mp3') : 'kayit.ogg');
       }
     } else if (msgType === 'location') {
       const lat = document.getElementById('loc-lat').value;
@@ -1256,8 +1267,8 @@ async function scheduleSending() {
       }
     } else {
       const fileBlob = (msgType === 'image' && imgMode === 'camera') ? camBlob : selectedFile;
-      if (!fileBlob) throw new Error(msgType === 'image' && imgMode === 'camera' ? 'Fotoğraf çekilmedi' : 'Dosya seçilmedi');
-      fd.append('file', fileBlob, msgType === 'image' && imgMode === 'camera' ? 'foto.jpg' : (selectedFile?.name || 'dosya'));
+      if (!fileBlob && !editingJobId) throw new Error(msgType === 'image' && imgMode === 'camera' ? 'Fotoğraf çekilmedi' : 'Dosya seçilmedi');
+      if (fileBlob) fd.append('file', fileBlob, msgType === 'image' && imgMode === 'camera' ? 'foto.jpg' : (selectedFile?.name || 'dosya'));
       const caption = document.getElementById(msgType === 'image' ? 'img-caption' : 'vid-caption')?.value || '';
       if (caption) fd.append('caption', caption);
     }
@@ -1269,11 +1280,18 @@ async function scheduleSending() {
   const btn = document.getElementById('schedule-btn');
   btn.disabled = true;
   try {
-    const r = await fetch('/api/bulk/schedule', { method: 'POST', headers: { 'x-api-token': currentToken }, body: fd });
+    const isEdit = !!editingJobId;
+    const url = isEdit ? '/api/bulk/scheduled/' + editingJobId : '/api/bulk/schedule';
+    const r = await fetch(url, { method: isEdit ? 'PUT' : 'POST', headers: { 'x-api-token': currentToken }, body: fd });
     const data = await r.json();
     if (!data.ok) throw new Error(data.error);
-    const recurMsg = recurrenceType !== 'none' ? ` ve bundan sonra ${RECURRENCE_LABEL_FOR_TOAST[recurrenceType]} otomatik tekrarlanacak` : '';
-    uiToast(`Zamanlandı! ${selected.length} kişiye ${runAt.toLocaleString('tr-TR')} tarihinde gönderilecek${recurMsg}.`, 'ok');
+    if (isEdit) {
+      uiToast('İş güncellendi!', 'ok');
+      exitEditMode();
+    } else {
+      const recurMsg = recurrenceType !== 'none' ? ` ve bundan sonra ${RECURRENCE_LABEL_FOR_TOAST[recurrenceType]} otomatik tekrarlanacak` : '';
+      uiToast(`Zamanlandı! ${selected.length} kişiye ${runAt.toLocaleString('tr-TR')} tarihinde gönderilecek${recurMsg}.`, 'ok');
+    }
     scheduleInput.value = '';
     document.getElementById('recurrence-type').value = 'none';
     updateRecurrenceHint();
@@ -1293,6 +1311,8 @@ const JOB_STATUS_COLOR = {
 const JOB_TYPE_LABEL = { text: 'Metin', image: 'Resim', video: 'Video', document: 'Dosya', audio: 'Ses', location: 'Konum' };
 const RECURRENCE_LABEL_FOR_TOAST = { daily: 'her gün', weekly: 'her hafta', monthly: 'her ay' };
 const REPEAT_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>';
+const DETAIL_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+const EDIT_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
 
 function recurrenceLabel(r) {
   const hh = String(r.hour).padStart(2, '0'), mm = String(r.minute).padStart(2, '0');
@@ -1337,6 +1357,7 @@ function renderScheduledJobs(jobs) {
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <span style="font-size:11px;font-weight:700;color:${JOB_STATUS_COLOR[j.status] || 'var(--muted)'}">${statusLabel}</span>
+          <button class="icon-btn" style="width:28px;height:28px" title="Detaylar" onclick="showJobDetails(${j.id})">${DETAIL_ICON}</button>
           ${j.status === 'pending' ? `<button class="icon-btn" style="width:28px;height:28px" title="${j.recurrence ? 'Tekrarı durdur' : 'İptal et'}" onclick="cancelScheduledJob(${j.id}, ${!!j.recurrence})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>` : ''}
         </div>
       </div>
@@ -1356,6 +1377,179 @@ async function cancelScheduledJob(id, isRecurring) {
   } catch (e) {
     uiToast(e.message, 'err');
   }
+}
+
+function escapeHtml(s) {
+  return (s || '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Bu iş ileride ne gönderiyordu, kime gönderiyordu — özellikle periyodik kampanyalar
+// çoğalınca hangisinin ne olduğunu unutmamak için.
+async function showJobDetails(id) {
+  let job;
+  try {
+    const r = await fetch('/api/bulk/scheduled/' + id, { headers: { 'x-api-token': currentToken } });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+    job = data.job;
+  } catch (e) { uiToast(e.message || 'İş bulunamadı', 'err'); return; }
+
+  const p = job.payload || {};
+  let contentHtml;
+  if (job.message_type === 'text') {
+    contentHtml = `<div style="white-space:pre-wrap;background:var(--surface);border-radius:8px;padding:10px">${escapeHtml(p.text) || '<span style="color:var(--muted)">(boş)</span>'}</div>`;
+  } else if (job.message_type === 'image' || job.message_type === 'video') {
+    contentHtml = `
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${job.has_media ? '📎 Medya dosyası ekli' : 'Medya yok'}</div>
+      ${p.caption ? `<div style="white-space:pre-wrap;background:var(--surface);border-radius:8px;padding:10px">${escapeHtml(p.caption)}</div>` : '<div style="color:var(--muted)">(açıklama yok)</div>'}`;
+  } else if (job.message_type === 'document') {
+    contentHtml = `<div style="font-size:12px;color:var(--muted)">${job.has_media ? 'Dosya: ' + escapeHtml(p.filename || '(isimsiz)') : 'Medya yok'}</div>`;
+  } else if (job.message_type === 'audio') {
+    contentHtml = p.audioUrl
+      ? `<div style="font-size:12px;word-break:break-all">URL: ${escapeHtml(p.audioUrl)}</div>`
+      : `<div style="font-size:12px;color:var(--muted)">${job.has_media ? '📎 Ses dosyası ekli' : 'Ses yok'}</div>`;
+  } else if (job.message_type === 'location') {
+    contentHtml = `<div style="font-size:12px">${escapeHtml(p.name)}${p.name && p.address ? ' · ' : ''}${escapeHtml(p.address)}<br><span style="color:var(--muted)">${p.latitude}, ${p.longitude}${p.live ? ' · Canlı konum' : ''}</span></div>`;
+  } else {
+    contentHtml = '';
+  }
+
+  const contactsHtml = (job.contacts || []).map(c =>
+    `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><span>${escapeHtml(c.name)}</span><span style="color:var(--muted);flex-shrink:0">${escapeHtml(c.phone)}</span></div>`
+  ).join('');
+
+  const recurrenceHtml = job.recurrence
+    ? `<div style="font-size:12px;color:var(--accent2);font-weight:600;margin-bottom:10px">${REPEAT_ICON} ${recurrenceLabel(job.recurrence)}${job.total_sent_count || job.total_fail_count ? ` · bugüne kadar ${job.total_sent_count} gönderildi${job.total_fail_count ? `, ${job.total_fail_count} başarısız` : ''}` : ''}</div>`
+    : '';
+
+  const sheet = uiSheet(`${JOB_TYPE_LABEL[job.message_type] || job.message_type} · İş #${job.id}`, `
+    ${recurrenceHtml}
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Mesaj</div>
+    <div style="margin-bottom:14px">${contentHtml}</div>
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Alıcılar (${(job.contacts||[]).length})</div>
+    <div style="max-height:180px;overflow-y:auto">${contactsHtml || '<div style="color:var(--muted);font-size:12px">Alıcı yok</div>'}</div>
+  `);
+
+  if (job.status === 'pending') {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-primary btn-full';
+    btn.style.marginTop = '14px';
+    btn.innerHTML = EDIT_ICON + ' Düzenle';
+    btn.onclick = () => { sheet.close(); startEditJob(job); };
+    sheet.bodyEl.appendChild(btn);
+  }
+}
+
+function setTypeByName(type) {
+  const btn = Array.from(document.querySelectorAll('.type-btn')).find(b => (b.getAttribute('onclick') || '').includes(`setType('${type}'`));
+  if (btn) setType(type, btn);
+}
+
+function setAudioTabByName(mode) {
+  const btn = Array.from(document.querySelectorAll('#type-audio .tab')).find(b => (b.getAttribute('onclick') || '').includes(`setAudioTab('${mode}'`));
+  if (btn) setAudioTab(mode, btn);
+}
+
+// Bir işi düzenlemek, aynı bileşen formunu o işin verileriyle doldurup "Zamanla" butonunu
+// "Güncelle"ye çevirmek demek — ayrı bir form yerine mevcut kompozisyon ekranı yeniden kullanılıyor.
+// Medya dosyasının kendisi tarayıcıdan geri doldurulamaz (dosya seçiciye programatik dosya
+// konulamaz) — yeni dosya seçilmezse sunucu zaten mevcut medyayı koruyor.
+let preEditSelectedPhones = null;
+
+function startEditJob(job) {
+  editingJobId = job.id;
+  preEditSelectedPhones = new Set(selectedPhones);
+  const p = job.payload || {};
+
+  setTypeByName(job.message_type);
+  if (job.message_type === 'text') {
+    document.getElementById('msg-text').value = p.text || '';
+  } else if (job.message_type === 'image') {
+    document.getElementById('img-caption').value = p.caption || '';
+    if (job.has_media) uiToast('Mevcut fotoğraf korunacak — yeni bir dosya seçerseniz onunla değiştirilir.', 'info');
+  } else if (job.message_type === 'video') {
+    document.getElementById('vid-caption').value = p.caption || '';
+    if (job.has_media) uiToast('Mevcut video korunacak — yeni bir dosya seçerseniz onunla değiştirilir.', 'info');
+  } else if (job.message_type === 'document') {
+    if (job.has_media) uiToast('Mevcut dosya korunacak — yeni bir dosya seçerseniz onunla değiştirilir.', 'info');
+  } else if (job.message_type === 'audio') {
+    if (p.audioUrl) {
+      setAudioTabByName('url');
+      document.getElementById('audio-url').value = p.audioUrl;
+    } else if (job.has_media) {
+      setAudioTabByName('file');
+      uiToast('Mevcut ses dosyası korunacak — yeni bir dosya seçerseniz onunla değiştirilir.', 'info');
+    }
+  } else if (job.message_type === 'location') {
+    document.getElementById('loc-name').value = p.name || '';
+    document.getElementById('loc-address').value = p.address || '';
+    if (p.live) {
+      const liveBtn = document.querySelector('.loc-type-btn.live');
+      if (liveBtn) setLocType('live', liveBtn);
+      document.getElementById('live-duration').value = p.duration_seconds || 3600;
+    }
+    setTimeout(() => {
+      initLeaflet();
+      if (p.latitude != null && p.longitude != null) setMapCoords(p.latitude, p.longitude);
+    }, 200);
+  }
+
+  // Alıcıları seç — Rehber'de hâlâ varsa göster, silinmişse bu düzenleme oturumu için geçici
+  // bir satır olarak ekle (Rehber'e kalıcı eklenmez, hiçbir recipient sessizce kaybolmasın).
+  // Seçim durumu gerçekte selectedPhones (localStorage) üzerinden yürüyor — loadContacts()
+  // her çağrıldığında oradan okunuyor — bu yüzden sadece .selected'i değil onu da güncelliyoruz,
+  // yoksa Rehber'e yeni kişi eklenmesi gibi sıradan bir işlem bu seçimi sessizce sıfırlardı.
+  const knownPhones = new Set(contacts.map(c => c.phone));
+  (job.contacts || []).forEach(jc => {
+    if (!knownPhones.has(jc.phone)) contacts.push({ name: jc.name, phone: jc.phone, _temp: true });
+  });
+  selectedPhones = new Set((job.contacts || []).map(jc => jc.phone));
+  saveSelection();
+  contacts.forEach(c => c.selected = selectedPhones.has(c.phone));
+  renderContacts();
+  document.getElementById('acc-rehber').classList.add('open');
+  document.getElementById('arrow-acc-rehber').classList.add('open');
+
+  document.getElementById('acc-settings').classList.add('open');
+  document.getElementById('arrow-acc-settings').classList.add('open');
+  document.getElementById('send-delay').value = String(job.message_delay_ms);
+  if (job.batch_size) {
+    document.getElementById('batch-size').value = job.batch_size;
+    document.getElementById('batch-delay').value = String(Math.round((job.batch_delay_ms || 30000) / 1000));
+  }
+  updateSettingsSummary();
+
+  const d = new Date(job.run_at);
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('schedule-at').value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  document.getElementById('recurrence-type').value = job.recurrence ? job.recurrence.type : 'none';
+  updateRecurrenceHint();
+
+  document.getElementById('edit-banner').style.display = 'flex';
+  document.getElementById('edit-banner-text').textContent = `✏️ İş #${job.id} düzenleniyor`;
+  document.getElementById('schedule-btn-label').textContent = 'Güncelle';
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  uiToast('Değişiklikleri yapıp "Güncelle"ye basın.', 'info');
+}
+
+function exitEditMode() {
+  editingJobId = null;
+  document.getElementById('edit-banner').style.display = 'none';
+  document.getElementById('schedule-btn-label').textContent = 'Zamanla';
+  for (let i = contacts.length - 1; i >= 0; i--) if (contacts[i]._temp) contacts.splice(i, 1);
+  if (preEditSelectedPhones) {
+    selectedPhones = preEditSelectedPhones;
+    preEditSelectedPhones = null;
+    saveSelection();
+  }
+  contacts.forEach(c => c.selected = selectedPhones.has(c.phone));
+  renderContacts();
+}
+
+function cancelEditJob() {
+  exitEditMode();
+  uiToast('Düzenleme iptal edildi', 'info');
 }
 </script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>

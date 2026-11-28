@@ -12,6 +12,9 @@ const CHECK_INTERVAL_MS = 20 * 1000;
 function buildContent(job, contact) {
   const payload = JSON.parse(job.payload || '{}');
   const text = (payload.text || '').split('{isim}').join(contact.name);
+  // Resim/video altyazısı toplu.html'de ayrı bir "caption" alanı olarak gönderiliyor
+  // (metin mesajındaki "text" alanından farklı) — buradan okunmazsa altyazı sessizce kaybolur.
+  const caption = (payload.caption || '').split('{isim}').join(contact.name);
 
   if (job.message_type === 'text') return { text };
 
@@ -22,8 +25,8 @@ function buildContent(job, contact) {
   if (['image', 'video', 'audio', 'document'].includes(job.message_type)) {
     if (!job.media_path || !fs.existsSync(job.media_path)) throw new Error('Medya dosyası bulunamadı');
     const buffer = fs.readFileSync(job.media_path);
-    if (job.message_type === 'image') return { image: buffer, caption: text };
-    if (job.message_type === 'video') return { video: buffer, caption: text };
+    if (job.message_type === 'image') return { image: buffer, caption };
+    if (job.message_type === 'video') return { video: buffer, caption };
     if (job.message_type === 'audio') return { audio: buffer, mimetype: job.media_mimetype || 'audio/mp4', ptt: !!payload.ptt };
     return { document: buffer, fileName: payload.filename || 'dosya', mimetype: job.media_mimetype || 'application/octet-stream' };
   }

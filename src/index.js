@@ -819,60 +819,76 @@ app.post('/api/send/media', customerAuth, rateLimit, upload.single('file'), asyn
 const SCHEDULED_MEDIA_DIR = path.join(__dirname, '../data/scheduled_media');
 if (!fs.existsSync(SCHEDULED_MEDIA_DIR)) fs.mkdirSync(SCHEDULED_MEDIA_DIR, { recursive: true });
 
-app.post('/api/bulk/schedule', customerAuth, upload.single('file'), (req, res) => {
-  const b = req.body;
-  const messageType = b.message_type;
+// POST (oluşturma) ve PUT (düzenleme) aynı doğrulama kurallarını paylaşır — tek yerden,
+// iki uçta da aynı anda bozulma riskini azaltır.
+function validateScheduleRequest(b, messageType) {
   const validTypes = ['text', 'image', 'video', 'document', 'audio', 'location'];
-  if (!validTypes.includes(messageType)) {
-    if (req.file) fs.unlinkSync(req.file.path);
-    return res.status(400).json({ error: 'Geçersiz mesaj tipi' });
-  }
+  if (!validTypes.includes(messageType)) return { error: 'Geçersiz mesaj tipi' };
 
   let contacts;
   try { contacts = JSON.parse(b.contacts || '[]'); } catch (e) { contacts = null; }
-  if (!Array.isArray(contacts) || !contacts.length) {
-    if (req.file) fs.unlinkSync(req.file.path);
-    return res.status(400).json({ error: 'En az bir kişi seçilmeli' });
-  }
+  if (!Array.isArray(contacts) || !contacts.length) return { error: 'En az bir kişi seçilmeli' };
   contacts = contacts
     .map(c => ({ name: (c.name || '').toString().trim(), phone: wa.normalizePhone(c.phone || '') }))
     .filter(c => c.name && c.phone.length >= 10);
-  if (!contacts.length) {
-    if (req.file) fs.unlinkSync(req.file.path);
-    return res.status(400).json({ error: 'Geçerli kişi bulunamadı' });
-  }
+  if (!contacts.length) return { error: 'Geçerli kişi bulunamadı' };
 
   const runAtMs = Date.parse(b.run_at);
-  if (!runAtMs || runAtMs <= Date.now()) {
-    if (req.file) fs.unlinkSync(req.file.path);
-    return res.status(400).json({ error: 'Zamanlama tarihi gelecekte olmalı' });
-  }
+  if (!runAtMs || runAtMs <= Date.now()) return { error: 'Zamanlama tarihi gelecekte olmalı' };
 
   // Periyodik (tekrarlanan) gönderim: gün/saat (ve haftalık için haftanın günü, aylık için
   // ayın günü) seçilen ilk tarih/saatten türetilir — kullanıcı ayrıca bir gün/saat seçmez,
   // "her pazartesi 02:00" gibi bir tekrar istiyorsa run_at'i öyle bir ana ayarlar.
   let recurrence = null;
   if (b.recurrence_type && b.recurrence_type !== 'none') {
-    if (!['daily', 'weekly', 'monthly'].includes(b.recurrence_type)) {
-      if (req.file) fs.unlinkSync(req.file.path);
-      return res.status(400).json({ error: 'Geçersiz tekrar tipi' });
-    }
+    if (!['daily', 'weekly', 'monthly'].includes(b.recurrence_type)) return { error: 'Geçersiz tekrar tipi' };
     const d = new Date(runAtMs);
     recurrence = { type: b.recurrence_type, hour: d.getHours(), minute: d.getMinutes() };
     if (b.recurrence_type === 'weekly') recurrence.dayOfWeek = d.getDay();
     if (b.recurrence_type === 'monthly') recurrence.dayOfMonth = d.getDate();
   }
 
-  const needsFile = ['image', 'video', 'document'].includes(messageType) || (messageType === 'audio' && !b.audio_url);
-  if (needsFile && !req.file) return res.status(400).json({ error: 'Bu mesaj tipi için dosya gerekli' });
   if (messageType === 'location' && (b.latitude == null || b.longitude == null)) {
-    return res.status(400).json({ error: 'Konum için latitude ve longitude gerekli' });
+    return { error: 'Konum için latitude ve longitude gerekli' };
   }
 
   // Mesajlar arası bekleme için spam/ban koruması olarak aynı alt sınır manuel gönderimdeki ile aynı (3sn).
   const messageDelayMs = Math.max(3000, parseInt(b.message_delay_ms) || 3000);
   const batchSize = parseInt(b.batch_size) || null;
   const batchDelayMs = batchSize ? Math.max(1000, parseInt(b.batch_delay_ms) || 30000) : null;
+
+  return { contacts, runAtMs, recurrence, messageDelayMs, batchSize, batchDelayMs };
+}
+
+function buildSchedulePayload(b, req, existingPayload) {
+  return {
+    text: b.text || '',
+    caption: b.caption || '',
+    filename: b.filename || req.file?.originalname || existingPayload?.filename || null,
+    ptt: b.ptt === 'true' || b.ptt === '1',
+    audioUrl: b.audio_url || undefined,
+    latitude: b.latitude != null ? parseFloat(b.latitude) : undefined,
+    longitude: b.longitude != null ? parseFloat(b.longitude) : undefined,
+    name: b.name || '',
+    address: b.address || '',
+    live: b.live === 'true' || b.live === '1',
+    duration_seconds: b.duration_seconds ? parseInt(b.duration_seconds) : undefined
+  };
+}
+
+app.post('/api/bulk/schedule', customerAuth, upload.single('file'), (req, res) => {
+  const b = req.body;
+  const messageType = b.message_type;
+
+  const v = validateScheduleRequest(b, messageType);
+  if (v.error) {
+    if (req.file) fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: v.error });
+  }
+  const { contacts, runAtMs, recurrence, messageDelayMs, batchSize, batchDelayMs } = v;
+
+  const needsFile = ['image', 'video', 'document'].includes(messageType) || (messageType === 'audio' && !b.audio_url);
+  if (needsFile && !req.file) return res.status(400).json({ error: 'Bu mesaj tipi için dosya gerekli' });
 
   let mediaPath = null, mediaMimetype = null;
   if (req.file) {
@@ -885,19 +901,7 @@ app.post('/api/bulk/schedule', customerAuth, upload.single('file'), (req, res) =
     mediaMimetype = req.file.mimetype;
   }
 
-  const payload = {
-    text: b.text || '',
-    caption: b.caption || '',
-    filename: b.filename || req.file?.originalname || null,
-    ptt: b.ptt === 'true' || b.ptt === '1',
-    audioUrl: b.audio_url || undefined,
-    latitude: b.latitude != null ? parseFloat(b.latitude) : undefined,
-    longitude: b.longitude != null ? parseFloat(b.longitude) : undefined,
-    name: b.name || '',
-    address: b.address || '',
-    live: b.live === 'true' || b.live === '1',
-    duration_seconds: b.duration_seconds ? parseInt(b.duration_seconds) : undefined
-  };
+  const payload = buildSchedulePayload(b, req);
 
   const job = db.createScheduledJob({
     customerId: req.customer.id,
@@ -935,6 +939,93 @@ app.get('/api/bulk/scheduled', customerAuth, (req, res) => {
     total_fail_count: j.total_fail_count || 0
   }));
   res.json({ ok: true, jobs });
+});
+
+// Tek bir işin tam ayrıntısı: mesaj içeriği + alıcı listesi — hem "Detaylar" görünümü
+// hem düzenleme formunu doldurmak için kullanılır. Liste uçundan kasıtlı ayrı: o uçta
+// yüzlerce alıcının tamamını her seferinde taşımamak için sadece contact_count dönülüyor.
+app.get('/api/bulk/scheduled/:id', customerAuth, (req, res) => {
+  const job = db.getScheduledJobForCustomer(req.params.id, req.customer.id);
+  if (!job) return res.status(404).json({ error: 'İş bulunamadı' });
+  res.json({ ok: true, job: {
+    id: job.id,
+    message_type: job.message_type,
+    payload: JSON.parse(job.payload || '{}'),
+    contacts: JSON.parse(job.contacts || '[]'),
+    has_media: !!job.media_path,
+    media_mimetype: job.media_mimetype,
+    batch_size: job.batch_size,
+    batch_delay_ms: job.batch_delay_ms,
+    message_delay_ms: job.message_delay_ms,
+    run_at: job.run_at,
+    status: job.status,
+    recurrence: job.recurrence ? JSON.parse(job.recurrence) : null,
+    sent_count: job.sent_count,
+    fail_count: job.fail_count,
+    total_sent_count: job.total_sent_count || 0,
+    total_fail_count: job.total_fail_count || 0,
+    error: job.error,
+    created_at: job.created_at
+  } });
+});
+
+// Bekleyen bir işi düzenler (mesaj tipi SABİT kalır — değiştirmek isterlerse iptal edip
+// yeniden oluşturmaları gerekir). Medya dosyası, yeni bir dosya yüklenmediyse korunur.
+// Düzenleme, ilerlemeyi sıfırlayıp işi baştan 'pending' durumuna alır.
+app.put('/api/bulk/scheduled/:id', customerAuth, upload.single('file'), (req, res) => {
+  const existing = db.getScheduledJobForCustomer(req.params.id, req.customer.id);
+  if (!existing) {
+    if (req.file) fs.unlinkSync(req.file.path);
+    return res.status(404).json({ error: 'İş bulunamadı' });
+  }
+  if (existing.status !== 'pending') {
+    if (req.file) fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'Bu iş şu anda çalışıyor veya bitmiş, düzenlenemez' });
+  }
+
+  const b = req.body;
+  const messageType = existing.message_type;
+
+  const v = validateScheduleRequest(b, messageType);
+  if (v.error) {
+    if (req.file) fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: v.error });
+  }
+  const { contacts, runAtMs, recurrence, messageDelayMs, batchSize, batchDelayMs } = v;
+
+  let mediaPath = existing.media_path, mediaMimetype = existing.media_mimetype;
+  if (req.file) {
+    const ext = path.extname(req.file.originalname) || '';
+    const newMediaPath = path.join(SCHEDULED_MEDIA_DIR, `${Date.now()}_${req.customer.id}_${Math.random().toString(36).slice(2)}${ext}`);
+    fs.copyFileSync(req.file.path, newMediaPath);
+    fs.unlinkSync(req.file.path);
+    if (existing.media_path) { try { fs.unlinkSync(existing.media_path); } catch (e) {} }
+    mediaPath = newMediaPath;
+    mediaMimetype = req.file.mimetype;
+  }
+
+  const existingPayload = JSON.parse(existing.payload || '{}');
+  const payload = buildSchedulePayload(b, req, existingPayload);
+
+  db.updateScheduledJob(existing.id, {
+    payload: JSON.stringify(payload),
+    media_path: mediaPath,
+    media_mimetype: mediaMimetype,
+    contacts: JSON.stringify(contacts),
+    batch_size: batchSize,
+    batch_delay_ms: batchDelayMs,
+    message_delay_ms: messageDelayMs,
+    run_at: new Date(runAtMs).toISOString(),
+    recurrence: recurrence ? JSON.stringify(recurrence) : null,
+    status: 'pending',
+    next_index: 0,
+    sent_count: 0,
+    fail_count: 0,
+    error: null,
+    finished_at: null
+  });
+
+  res.json({ ok: true });
 });
 
 app.delete('/api/bulk/scheduled/:id', customerAuth, (req, res) => {

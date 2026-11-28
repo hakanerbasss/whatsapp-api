@@ -40,6 +40,11 @@
       .ui-modal-btn.cancel{background:var(--surface,#0f1419);color:var(--muted,#4a6070);border:1px solid var(--border,#1e2733);}
       .ui-modal-btn.confirm{background:var(--accent,#25D366);color:#000;}
       .ui-modal-btn.confirm.danger{background:var(--red,#ff4444);color:#fff;}
+      .ui-sheet{max-width:420px;max-height:85vh;display:flex;flex-direction:column;padding:0;}
+      .ui-sheet-header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 18px;border-bottom:1px solid var(--border,#1e2733);flex-shrink:0;}
+      .ui-sheet-title{font-size:15px;font-weight:700;}
+      .ui-sheet-close{background:none;border:none;color:var(--muted,#4a6070);cursor:pointer;padding:4px;display:flex;flex-shrink:0;}
+      .ui-sheet-body{padding:16px 18px;overflow-y:auto;font-size:13px;line-height:1.6;}
     `;
     document.head.appendChild(style);
   }
@@ -143,7 +148,38 @@
     });
   }
 
+  const CLOSE_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+
+  // Serbest HTML içerikli büyük panel (detay görünümü gibi) — confirm/prompt'tan farklı olarak
+  // await edilmez, kapanınca { closed: true } ile resolve olan bir promise döner (gerekirse).
+  // bodyHtml ÇAĞIRANIN kendi ürettiği, güvendiği HTML'dir (kullanıcı girdisi escape edilerek
+  // önceden metne çevrilmiş olmalı) — burada ayrıca escape edilmez.
+  function uiSheet(title, bodyHtml) {
+    injectStyle();
+    const root = ensureRoot();
+    const backdrop = document.createElement('div');
+    backdrop.className = 'ui-modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="ui-modal ui-sheet">
+        <div class="ui-sheet-header">
+          <div class="ui-sheet-title"></div>
+          <button class="ui-sheet-close" aria-label="Kapat">${CLOSE_ICON}</button>
+        </div>
+        <div class="ui-sheet-body"></div>
+      </div>`;
+    const modal = backdrop.querySelector('.ui-modal');
+    modal.querySelector('.ui-sheet-title').textContent = title;
+    modal.querySelector('.ui-sheet-body').innerHTML = bodyHtml;
+    root.appendChild(backdrop);
+    requestAnimationFrame(() => backdrop.classList.add('show'));
+    const close = () => { backdrop.classList.remove('show'); setTimeout(() => backdrop.remove(), 200); };
+    modal.querySelector('.ui-sheet-close').onclick = close;
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+    return { close, bodyEl: modal.querySelector('.ui-sheet-body') };
+  }
+
   window.uiToast = uiToast;
   window.uiConfirm = uiConfirm;
   window.uiPrompt = uiPrompt;
+  window.uiSheet = uiSheet;
 })();
