@@ -1378,6 +1378,7 @@ app.get('/api/musteri/dashboard', customerAuthDashboard, (req, res) => {
   const conn = wa.getStatus(c.id);
   const isExpired = c.expires_at && new Date(c.expires_at) < new Date();
   const isLimitDone = c.plan === 'demo' && totalUsage >= c.daily_limit;
+  const tokenAgeDays = c.token_rotated_at ? Math.floor((Date.now() - new Date(c.token_rotated_at + 'Z').getTime()) / 86400000) : null;
   res.json({
     name: c.name, plan: c.plan, status: c.status,
     daily_limit: c.daily_limit, today_usage: usage, total_usage: totalUsage,
@@ -1386,6 +1387,7 @@ app.get('/api/musteri/dashboard', customerAuthDashboard, (req, res) => {
     wa_status: conn.status, wa_number: conn.phone,
     notify_scheduled: !!c.notify_scheduled,
     notify_incoming_messages: !!c.notify_incoming_messages,
+    token_age_days: tokenAgeDays,
     packages: JSON.parse(db.getSetting('packages') || '[]'),
     contact: {
       phone: db.getSetting('contact_phone') || null,

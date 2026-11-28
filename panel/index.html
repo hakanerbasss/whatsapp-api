@@ -385,6 +385,15 @@ async function renderDashboard() {
 }
 
 // ── MÜŞTERİLER ────────────────────────────────────────────────────
+// Token 90 günden eski ise yenileme önerisi rozeti — zorunlu değil, sadece hatırlatma
+// (bkz. musteri.html'deki aynı eşik ile müşteri tarafı hatırlatması).
+function tokenAgeBadge(rotatedAt) {
+  if (!rotatedAt) return '';
+  const days = Math.floor((Date.now() - new Date(rotatedAt + 'Z').getTime()) / 86400000);
+  if (days < 90) return '';
+  return `<span style="font-size:11px;color:var(--yellow)" title="Token ${days} gündür yenilenmedi">· ⚠️ ${days}g token</span>`;
+}
+
 async function renderCustomers() {
   document.getElementById('page-title').textContent = 'Müşteriler';
   document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="openAddCustomer()">+ Müşteri Ekle</button>`;
@@ -411,6 +420,7 @@ async function renderCustomers() {
         ${c.plan === 'demo' ? `<span class="badge" style="background:rgba(255,215,0,.1);color:#ffd700;border-color:rgba(255,215,0,.3);display:inline-flex;align-items:center;gap:5px">${ICON_GIFT} Demo</span>` : ''}
         <span style="font-size:11px;color:var(--muted)">${c.plan === 'demo' ? c.daily_limit+' mesaj (toplam)' : c.daily_limit+'/gün'} · ${c.plan === 'demo' ? (c.total_messages||0)+' kullanıldı' : (c.today_messages||0)+' bugün'}</span>
         ${c.expires_at ? `<span style="font-size:11px;color:${new Date(c.expires_at)<new Date()?'var(--red)':'var(--muted)'}">· ${new Date(c.expires_at)<new Date()?'Süresi doldu':Math.ceil((new Date(c.expires_at)-new Date())/(1000*60*60*24))+' gün kaldı'}</span>` : ''}
+        ${tokenAgeBadge(c.token_rotated_at)}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-blue" style="flex:1;padding:8px;display:inline-flex;align-items:center;justify-content:center;gap:6px" onclick="openConnect(${c.id},'${c.name}')">${ICON_SMARTPHONE} WhatsApp Bağla</button>

@@ -188,6 +188,7 @@ input:focus{border-color:var(--accent);}
     <!-- API Token -->
     <div class="card">
       <div class="card-title">API Token</div>
+      <div id="token-age-reminder" style="display:none;font-size:12px;color:var(--yellow);background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:8px;margin-bottom:10px"></div>
       <div style="display:flex;gap:8px;align-items:center">
         <div class="token-box" id="d-token" style="flex:1;cursor:default;user-select:all">—</div>
         <button onclick="toggleTokenVisibility()" id="token-eye-btn" title="Göster" style="flex-shrink:0;width:36px;height:36px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
@@ -420,6 +421,17 @@ function renderDashboard(d, token) {
   renderScheduledNotifyToggle();
   notifyIncomingPref = d.notify_incoming_messages !== false;
   renderIncomingNotifyToggle();
+
+  // Token 90 günden eski ise periyodik yenileme önerisi göster — zorunlu değil, sadece hatırlatma.
+  const reminder = document.getElementById('token-age-reminder');
+  if (reminder) {
+    if (typeof d.token_age_days === 'number' && d.token_age_days >= 90) {
+      reminder.style.display = 'block';
+      reminder.textContent = `⚠️ Bu token ${d.token_age_days} gündür değişmedi. Güvenlik için periyodik olarak yenilemenizi öneririz.`;
+    } else {
+      reminder.style.display = 'none';
+    }
+  }
 
   document.getElementById('d-name').textContent = d.name;
   const planBadge = document.getElementById('d-plan-badge');
@@ -668,6 +680,8 @@ async function renewToken() {
     currentToken = data.token;
     localStorage.setItem('wa_customer_token', data.token);
     renderTokenDisplay();
+    const reminder = document.getElementById('token-age-reminder');
+    if (reminder) reminder.style.display = 'none';
     const url = new URL(window.location);
     url.searchParams.set('token', data.token);
     window.history.replaceState({}, '', url);

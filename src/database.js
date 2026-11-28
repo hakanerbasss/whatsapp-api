@@ -125,12 +125,17 @@ function migrate() {
     // Mevcut müşteriler bugüne kadarki davranışı (gelen mesajda bildirim) kaybetmesin diye
     // varsayılan açık (1) — kapatmak isteyen Bildirimler kartından kendi kapatır.
     { table: 'customers', column: 'notify_incoming_messages', ddl: 'ALTER TABLE customers ADD COLUMN notify_incoming_messages INTEGER DEFAULT 1' },
+    // Token'ın en son ne zaman üretildiğini/yenilendiğini tutar — rotasyon hatırlatması için.
+    // Sabit bir DEFAULT satır bazlı created_at'i taşıyamaz, bu yüzden NULL bırakılıp aşağıda
+    // created_at'ten (hesap ne zaman açıldıysa token da o an üretilmişti) dolduruluyor.
+    { table: 'customers', column: 'token_rotated_at', ddl: 'ALTER TABLE customers ADD COLUMN token_rotated_at TEXT' },
   ];
   for (const m of columnAdditions) {
     const existing = all(`PRAGMA table_info(${m.table})`).map(c => c.name);
     if (!existing.includes(m.column)) getDb().exec(m.ddl);
   }
   migrateTokenEncryption();
+  getDb().run('UPDATE customers SET token_rotated_at = created_at WHERE token_rotated_at IS NULL');
   saveDb();
 }
 
@@ -157,7 +162,8 @@ function adminExists() { return (get('SELECT COUNT(*) as c FROM admins')?.c || 0
 
 function createCustomer(data) {
   const token = uuidv4().replace(/-/g,'');
-  run('INSERT INTO customers (name,email,phone,token,token_enc,plan,daily_limit,expires_at,notes) VALUES (?,?,?,?,?,?,?,?,?)',
+  run(`INSERT INTO customers (name,email,phone,token,token_enc,plan,daily_limit,expires_at,notes,token_rotated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))`,
     [data.name,data.email||null,data.phone||null,hashToken(token),encryptValue(token),data.plan||'basic',data.daily_limit||100,data.expires_at||null,data.notes||null]);
   return getCustomerByToken(token);
 }
@@ -175,7 +181,11 @@ function getCustomerByToken(token) { return withDecryptedToken(get('SELECT * FRO
 function getCustomerById(id) { return withDecryptedToken(get('SELECT * FROM customers WHERE id=?',[id])); }
 function updateCustomer(id,data) {
   const d = { ...data };
-  if (d.token !== undefined) { const plain = d.token; d.token = hashToken(plain); d.token_enc = encryptValue(plain); }
+  if (d.token !== undefined) {
+    const plain = d.token;
+    d.token = hashToken(plain); d.token_enc = encryptValue(plain);
+    d.token_rotated_at = new Date().toISOString().replace('T',' ').slice(0,19);
+  }
   const f=Object.keys(d).map(k=>`${k}=?`).join(','); run(`UPDATE customers SET ${f} WHERE id=?`,[...Object.values(d),id]);
 }
 function deleteCustomer(id) { run('DELETE FROM customers WHERE id=?',[id]); }
