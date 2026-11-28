@@ -161,6 +161,11 @@ function adminAuth(req, res, next) {
   }
 }
 
+// Admin'in durum değiştiren işlemlerini işlem kaydına (audit log) yazar — bkz. database.js.
+function logAdminAction(req, action, target, details) {
+  db.addAuditLog(req.admin?.username, action, target, details, getClientIp(req));
+}
+
 function customerAuth(req, res, next) {
   const token = req.headers['x-api-token'] || req.query.token;
   if (!token) return res.status(401).json({ error: 'API token gerekli' });
@@ -225,6 +230,7 @@ app.post('/api/admin/login', (req, res) => {
     return res.status(401).json({ error: 'Kullanıcı adı veya şifre hatalı' });
   }
   recordLoginSuccess(lockKey);
+  db.addAuditLog(username, 'admin.login', null, null, getClientIp(req));
   const token = jwt.sign({ id: admin.id, username, role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
   res.json({ ok: true, token });
 });
@@ -242,19 +248,23 @@ app.get('/api/admin/customers', adminAuth, (req, res) => {
 // Müşteri ekle
 app.post('/api/admin/customers', adminAuth, (req, res) => {
   const customer = db.createCustomer(req.body);
+  logAdminAction(req, 'customer.create', customer.name, { id: customer.id, plan: customer.plan });
   res.json({ ok: true, customer });
 });
 
 // Müşteri güncelle
 app.put('/api/admin/customers/:id', adminAuth, (req, res) => {
   db.updateCustomer(req.params.id, req.body);
+  logAdminAction(req, 'customer.update', req.params.id, { fields: Object.keys(req.body || {}) });
   res.json({ ok: true });
 });
 
 // Müşteri sil
 app.delete('/api/admin/customers/:id', adminAuth, async (req, res) => {
+  const customer = db.getCustomerById(req.params.id);
   await wa.disconnectCustomer(req.params.id).catch(() => {});
   db.deleteCustomer(req.params.id);
+  logAdminAction(req, 'customer.delete', customer?.name || req.params.id, { id: req.params.id });
   res.json({ ok: true });
 });
 
@@ -263,6 +273,7 @@ app.post('/api/admin/customers/:id/toggle', adminAuth, (req, res) => {
   const customer = db.getCustomerById(req.params.id);
   const newStatus = customer.status === 'active' ? 'suspended' : 'active';
   db.toggleCustomer(req.params.id, newStatus);
+  logAdminAction(req, 'customer.toggle', customer.name, { id: req.params.id, new_status: newStatus });
   res.json({ ok: true, status: newStatus });
 });
 
@@ -271,6 +282,7 @@ app.post('/api/admin/customers/:id/reset-token', adminAuth, (req, res) => {
   const { v4: uuidv4 } = require('uuid');
   const newToken = uuidv4().replace(/-/g, '');
   db.updateCustomer(req.params.id, { token: newToken });
+  logAdminAction(req, 'customer.reset_token', req.params.id, {}); // token değeri asla kayda yazılmaz
   res.json({ ok: true, token: newToken });
 });
 
@@ -373,6 +385,7 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
   if (contact_message !== undefined) db.setSetting('contact_message', contact_message);
   if (cors_origins    !== undefined) db.setSetting('cors_origins',    cors_origins);
   if (packages        !== undefined) db.setSetting('packages', JSON.stringify(packages));
+  logAdminAction(req, 'settings.update', null, { fields: Object.keys(req.body || {}) });
   res.json({ ok: true });
 });
 
@@ -384,6 +397,7 @@ app.get('/api/admin/blacklist', adminAuth, (req, res) => {
 
 app.delete('/api/admin/blacklist/:id', adminAuth, (req, res) => {
   db.removeBlacklist(req.params.id);
+  logAdminAction(req, 'blacklist.remove', req.params.id, {});
   res.json({ ok: true });
 });
 
@@ -391,6 +405,7 @@ app.post('/api/admin/blacklist', adminAuth, (req, res) => {
   const { phone, name, reason } = req.body;
   if (!phone) return res.status(400).json({ error: 'Telefon gerekli' });
   db.addBlacklist(phone.replace(/\D/g,''), name || '', reason || 'manual');
+  logAdminAction(req, 'blacklist.add', phone, { name });
   res.json({ ok: true });
 });
 // Admin iletişim WhatsApp'ını bul
@@ -496,6 +511,7 @@ app.post('/api/admin/broadcast', adminAuth, async (req, res) => {
     }
     await new Promise(r => setTimeout(r, 2000));
   }
+  logAdminAction(req, 'broadcast.send', plan_filter || 'all', { message_preview: message.slice(0, 80), total: customers.length, sent: results.filter(r => r.ok).length });
   res.json({ ok: true, total: customers.length, results });
 });
 
@@ -505,6 +521,14 @@ app.get('/api/admin/find/:token', adminAuth, (req, res) => {
   const conn = wa.getStatus(customer.id);
   const totalUsage = db.getTotalUsage(customer.id);
   res.json({ ...customer, wa_status: conn.status, wa_number: conn.phone, total_usage: totalUsage });
+});
+
+// İşlem kaydı (audit log) — admin'in durum değiştiren işlemlerinin geçmişi
+app.get('/api/admin/audit-log', adminAuth, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+  const offset = parseInt(req.query.offset) || 0;
+  const rows = db.getAuditLog({ limit, offset }).map(r => ({ ...r, details: r.details ? JSON.parse(r.details) : null }));
+  res.json({ ok: true, entries: rows });
 });
 
 // Plan yükselt + otomatik WhatsApp mesajı
@@ -517,6 +541,7 @@ app.post('/api/admin/customers/:id/upgrade', adminAuth, async (req, res) => {
   const updateData = { plan, daily_limit: parseInt(daily_limit), status: 'active' };
   if (expires_at) updateData.expires_at = expires_at;
   db.updateCustomer(req.params.id, updateData);
+  logAdminAction(req, 'customer.upgrade', customer.name, { id: req.params.id, plan, daily_limit, expires_at: expires_at || null });
 
   // Paket bilgisi
   const packages = JSON.parse(db.getSetting('packages') || '[]');

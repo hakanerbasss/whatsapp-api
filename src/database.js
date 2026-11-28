@@ -105,6 +105,7 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS scheduled_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, message_type TEXT NOT NULL, payload TEXT NOT NULL, media_path TEXT, media_mimetype TEXT, contacts TEXT NOT NULL, batch_size INTEGER, batch_delay_ms INTEGER, message_delay_ms INTEGER NOT NULL, run_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', sent_count INTEGER DEFAULT 0, fail_count INTEGER DEFAULT 0, next_index INTEGER DEFAULT 0, error TEXT, created_at TEXT DEFAULT (datetime('now')), started_at TEXT, finished_at TEXT);
     CREATE TABLE IF NOT EXISTS archived_chats (customer_id INTEGER NOT NULL, contact_phone TEXT NOT NULL, archived_at TEXT DEFAULT (datetime('now')), PRIMARY KEY(customer_id, contact_phone));
     CREATE TABLE IF NOT EXISTS push_subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, endpoint TEXT UNIQUE NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_username TEXT, action TEXT NOT NULL, target TEXT, details TEXT, ip TEXT, created_at TEXT DEFAULT (datetime('now')));
   `);
   saveDb();
 }
@@ -400,6 +401,20 @@ function getPushSubscriptions(customerId) {
   return all('SELECT * FROM push_subscriptions WHERE customer_id=?', [customerId]);
 }
 
+// ── İŞLEM KAYDI (AUDIT LOG) ───────────────────────────────────────
+// Admin'in hassas/durum değiştiren işlemlerini (müşteri ekle/sil/askıya al, token sıfırla,
+// ayar değiştir, duyuru gönder, kara liste vb.) kalıcı olarak kaydeder — "kim ne zaman ne
+// yaptı" sorusuna sonradan cevap verebilmek için. details serbest biçimli bir JSON metnidir;
+// token gibi hassas değerler asla burada tutulmaz, sadece hangi müşteri/alan etkilendiği.
+function addAuditLog(adminUsername, action, target, details, ip) {
+  run('INSERT INTO audit_log (admin_username, action, target, details, ip) VALUES (?,?,?,?,?)',
+    [adminUsername || null, action, target || null, details ? JSON.stringify(details) : null, ip || null]);
+}
+
+function getAuditLog({ limit = 100, offset = 0 } = {}) {
+  return all('SELECT * FROM audit_log ORDER BY id DESC LIMIT ? OFFSET ?', [limit, offset]);
+}
+
 // ── ZAMANLANMIŞ TOPLU GÖNDERİM ───────────────────────────────────
 // Tarayıcı kapansa/telefon uyusa bile gönderilsin diye tamamen sunucu tarafında,
 // veritabanına kaydedilmiş bir kuyruk olarak tutulur (bkz. src/scheduler.js).
@@ -446,4 +461,4 @@ function cancelScheduledJob(id, customerId) {
   return true;
 }
 
-module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, isFirstQuotaWarning, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getScheduledJobForCustomer, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob, archiveChat, unarchiveChat, getArchivedPhones, deleteChatHistory, getTotalUnreadCount, addPushSubscription, removePushSubscription, getPushSubscriptions };
+module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, isFirstQuotaWarning, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getScheduledJobForCustomer, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob, archiveChat, unarchiveChat, getArchivedPhones, deleteChatHistory, getTotalUnreadCount, addPushSubscription, removePushSubscription, getPushSubscriptions, addAuditLog, getAuditLog };
