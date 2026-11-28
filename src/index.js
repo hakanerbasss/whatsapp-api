@@ -1439,6 +1439,10 @@ app.get('/sohbet', (req, res) => {
   res.sendFile(path.join(__dirname, '../panel/sohbet.html'));
 });
 
+app.get('/sartlar', (req, res) => {
+  res.sendFile(path.join(__dirname, '../panel/sartlar.html'));
+});
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../panel/index.html'));
 });

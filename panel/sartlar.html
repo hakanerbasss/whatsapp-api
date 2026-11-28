@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kullanım Şartları — WhatsApp API</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#25D366">
+<style>
+:root{--bg:#0a0e14;--surface:#0f1419;--card:#111820;--border:#1e2733;--accent:#25D366;--accent2:#00d4ff;--red:#ff4444;--yellow:#ffd700;--text:#e8f4f8;--muted:#4a6070;}
+[data-theme="light"]{--bg:#f0f4f8;--surface:#ffffff;--card:#ffffff;--border:#dde3ea;--accent:#25D366;--accent2:#0088cc;--red:#dc3545;--yellow:#b8860b;--text:#1a2332;--muted:#6b7280;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;line-height:1.7;}
+.back-btn{position:fixed;top:16px;left:16px;display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;background:var(--card);border:1px solid var(--border);color:var(--text);font-size:18px;text-decoration:none;z-index:10;transition:all .2s;}
+.back-btn:hover{border-color:var(--accent);color:var(--accent);}
+.wrap{max-width:720px;margin:0 auto;padding:70px 20px 60px;}
+h1{font-size:24px;font-weight:800;margin-bottom:6px;}
+.updated{color:var(--muted);font-size:12px;margin-bottom:24px;}
+.warn-box{background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--yellow);margin-bottom:28px;}
+.warn-box b{display:block;margin-bottom:4px;color:var(--yellow);}
+h2{font-size:16px;font-weight:700;margin:26px 0 8px;color:var(--accent2);}
+p,li{font-size:13.5px;color:var(--text);margin-bottom:8px;}
+ul{padding-left:20px;margin-bottom:8px;}
+a{color:var(--accent2);}
+.footer-note{margin-top:36px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);}
+</style>
+</head>
+<body>
+<a href="/" class="back-btn" title="Ana Sayfa"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></a>
+<div class="wrap">
+  <h1>Kullanım Şartları ve Sorumluluk Reddi</h1>
+  <div class="updated">Son güncelleme: 28 Kasım 2026</div>
+
+  <div class="warn-box">
+    <b>⚠️ Önemli uyarı</b>
+    Bu hizmet WhatsApp'ın resmi bir API'si DEĞİLDİR; WhatsApp Inc. / Meta Platforms ile hiçbir
+    şekilde bağlantılı, onaylı veya ortak değildir. WhatsApp Web protokolünü resmi olmayan bir
+    kütüphane (Baileys) üzerinden kullanır. Bu nedenle kullanım, WhatsApp'ın kendi Hizmet
+    Şartları'na aykırı sayılabilir ve bağlı telefon numarasının WhatsApp tarafından geçici veya
+    kalıcı olarak kısıtlanması/yasaklanması riski vardır. Bu riski kabul ederek kullanırsınız.
+  </div>
+
+  <h2>1. Hizmetin tanımı</h2>
+  <p>Bu yazılım ("Hizmet"), müşterilerin kendi WhatsApp numaralarını bir panel üzerinden yönetip
+  API/panel aracılığıyla mesaj göndermesini/almasını sağlayan, Wizaicorp tarafından sağlanan
+  self-hosted (kendi sunucunuzda veya sağlayıcının sunucusunda çalışan) bir yazılımdır.</p>
+
+  <h2>2. Lisans ve kullanım hakkı</h2>
+  <p>Yazılımın kaynak kodu ve tüm hakları Wizaicorp'a aittir (bkz. <code>LICENSE</code> dosyası).
+  Bu Hizmeti kullanan müşteriler, yalnızca kendi iş amaçları için, devredilemez ve yeniden
+  satılamaz bir kullanım hakkı elde eder. Yazılımın kopyalanması, tersine mühendislik yapılması,
+  yeniden satılması veya rakip bir ürün/hizmet olarak sunulması yasaktır.</p>
+
+  <h2>3. Hesap ve ödeme</h2>
+  <p>Müşteri hesapları ve plan/limit yükseltmeleri şu an için admin tarafından elden/manuel
+  onayla yönetilmektedir. Ödeme yapılmadan veya admin onayı olmadan ücretli plan özellikleri
+  (daha yüksek günlük limit vb.) aktifleşmez. Hesap bilgileri (token, bağlantı durumu) müşterinin
+  kendi sorumluluğundadır; token'ın üçüncü kişilerle paylaşılmasından doğacak zararlardan
+  Wizaicorp sorumlu tutulamaz.</p>
+
+  <h2>4. Yasaklı kullanımlar</h2>
+  <ul>
+    <li>İstenmeyen toplu mesaj (spam), taciz veya dolandırıcılık amaçlı gönderim,</li>
+    <li>Yasa dışı, nefret söylemi içeren veya üçüncü kişilerin haklarını ihlal eden içerik gönderimi,</li>
+    <li>İlgili ticari elektronik ileti / kişisel veri mevzuatına (ör. açık rıza alınmadan pazarlama
+    mesajı gönderme) aykırı kullanım,</li>
+    <li>Hizmeti kötüye kullanarak sunucu altyapısına zarar verecek şekilde aşırı yük bindirme.</li>
+  </ul>
+  <p>Bu kurallara aykırı kullanım tespit edilirse hesap bildirimsiz olarak askıya alınabilir veya
+  kapatılabilir.</p>
+
+  <h2>5. Sorumluluk reddi</h2>
+  <p>Hizmet "olduğu gibi" ve "mevcut haliyle" sağlanır; kesintisiz, hatasız çalışacağına veya
+  belirli bir amaca uygun olacağına dair açık ya da zımni hiçbir garanti verilmez. Özellikle:</p>
+  <ul>
+    <li>WhatsApp'ın numaranızı kısıtlaması/yasaklaması, protokol değişiklikleri nedeniyle
+    hizmetin geçici olarak çalışmaması,</li>
+    <li>İnternet/sunucu kesintileri, veri kaybı veya gecikmeli mesaj teslimi,</li>
+    <li>Müşterinin kendi gönderdiği içerikten doğan hukuki sorumluluk,</li>
+  </ul>
+  <p>gibi durumlardan Wizaicorp sorumlu tutulamaz. Wizaicorp'un bu Hizmet'ten doğan toplam
+  sorumluluğu, her koşulda, ilgili müşterinin son 1 (bir) ay içinde ödediği ücretle sınırlıdır.
+  Dolaylı, arızi veya sonuç niteliğindeki zararlardan (kâr kaybı, veri kaybı dahil) hiçbir şekilde
+  sorumluluk kabul edilmez.</p>
+
+  <h2>6. Değişiklikler</h2>
+  <p>Bu şartlar zaman zaman güncellenebilir; güncel sürüm her zaman bu sayfada yayınlanır.
+  Hizmeti kullanmaya devam etmeniz güncel şartları kabul ettiğiniz anlamına gelir.</p>
+
+  <h2>7. İletişim</h2>
+  <p>Sorularınız için: <a href="mailto:wizaicorp@gmail.com">wizaicorp@gmail.com</a></p>
+
+  <div class="footer-note">
+    Bu metin genel bir çerçeve olarak hazırlanmıştır ve bağlayıcı bir hukuki belge yerine
+    geçmeyebilir; yürürlüğe koymadan önce bir hukuk danışmanına gözden geçirtmeniz önerilir.
+  </div>
+</div>
+</body>
+</html>
