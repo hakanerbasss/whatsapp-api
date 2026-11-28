@@ -218,8 +218,25 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
     if (type !== 'notify') return;
     messages.forEach(async msg => {
       if (msg.key.fromMe) return;
-      const from = msg.key.remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '');
       const isGroup = msg.key.remoteJid?.endsWith('@g.us');
+      // WhatsApp bazı kişileri gerçek telefon numarası yerine dahili "LID" (Linked ID) ile
+      // adresler — bu durumda remoteJid rehberdeki hiçbir numarayla eşleşmeyen, uzun, rastgele
+      // görünen bir sayı taşıyan bir @lid kimliğidir. Baileys asıl telefon numarasını
+      // remoteJidAlt alanında ayrıca verir (resmi WhatsApp uygulaması zaten bunu kullanır);
+      // birebir sohbetlerde bunu tercih ediyoruz, yoksa rehberdeki tanıdık biri bile "bilinmeyen
+      // gönderen" gibi görünür. Grup sohbetlerinde `from` zaten grubun kendi kimliğidir
+      // (katılımcı değil) — webhook `from` alanının anlamını değiştirmemek için dokunmuyoruz.
+      let senderJid = msg.key.remoteJid;
+      if (!isGroup) {
+        senderJid = msg.key.remoteJidAlt || msg.key.remoteJid;
+        if (senderJid?.endsWith('@lid') && sock.signalRepository?.lidMapping) {
+          try {
+            const resolvedPn = await sock.signalRepository.lidMapping.getPNForLID(senderJid);
+            if (resolvedPn) senderJid = resolvedPn;
+          } catch (e) {}
+        }
+      }
+      const from = senderJid?.replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@lid', '');
       const m = msg.message;
       const text = m?.conversation || m?.extendedTextMessage?.text
         || m?.imageMessage?.caption || m?.videoMessage?.caption || '';
@@ -268,7 +285,8 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
   });
 
   function applyMessageStatus(key, status) {
-    const phone = normalizePhone(key.remoteJid?.replace('@s.whatsapp.net', ''));
+    const jid = key.remoteJidAlt || key.remoteJid;
+    const phone = normalizePhone(jid?.replace('@s.whatsapp.net', '').replace('@lid', ''));
     db.updateMessageStatusByWaId(customerId, key.id, status);
     waEvents.emit(`chat_${customerId}_${phone}`, { event: 'status', wa_message_id: key.id, status });
 
