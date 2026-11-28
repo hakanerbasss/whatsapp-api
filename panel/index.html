@@ -117,6 +117,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 </style>
 </head>
 <body>
+<script src="/ui.js"></script>
 
 <!-- Setup Sayfası -->
 <div id="setup-page" style="display:none">
@@ -313,8 +314,8 @@ async function doSetup() {
   const u = document.getElementById('setup-user').value.trim();
   const p = document.getElementById('setup-pass').value;
   const p2 = document.getElementById('setup-pass2').value;
-  if (!u || !p) return alert('Tüm alanları doldurun');
-  if (p !== p2) return alert('Şifreler eşleşmiyor');
+  if (!u || !p) { uiToast('Tüm alanları doldurun', 'err'); return; }
+  if (p !== p2) { uiToast('Şifreler eşleşmiyor', 'err'); return; }
   const r = await apiFetch('/api/setup', { method: 'POST', body: JSON.stringify({ username: u, password: p }) });
   if (r.ok) { show('login-page'); }
   else document.getElementById('setup-alert').innerHTML = `<div class="alert alert-red">${r.error}</div>`;
@@ -429,10 +430,13 @@ async function renderCustomers() {
 function copyToClipboard(text) {
   // HTTPS olmayan ortamlar için fallback
   if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
-  } else {
-    fallbackCopy(text);
+    return navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
   }
+  return Promise.resolve(fallbackCopy(text));
+}
+
+function copyAndToast(text) {
+  copyToClipboard(text).then(() => uiToast('Kopyalandı!', 'ok'));
 }
 
 function fallbackCopy(text) {
@@ -448,8 +452,7 @@ function fallbackCopy(text) {
 }
 
 function copyToken(token) {
-  copyToClipboard(token);
-  alert('Token kopyalandı!');
+  copyAndToast(token);
 }
 
 async function openAddCustomer() {
@@ -506,18 +509,18 @@ async function addCustomer() {
     expires_at: document.getElementById('m-expires').value || null,
     notes: document.getElementById('m-notes').value.trim()
   };
-  if (!data.name) return alert('Ad gerekli');
+  if (!data.name) { uiToast('Ad gerekli', 'err'); return; }
   const r = await apiFetch('/api/admin/customers', { method: 'POST', body: JSON.stringify(data) });
   if (r.ok) {
     renderCustomers();
     openModal('✅ Müşteri eklendi', `
       <div class="card">
         <div class="card-title">API Token</div>
-        <div class="token-box" onclick="navigator.clipboard?.writeText('${r.customer.token}');alert('Kopyalandı!')">${r.customer.token}</div>
+        <div class="token-box" onclick="copyAndToast('${r.customer.token}')">${r.customer.token}</div>
       </div>
       <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="closeModal()">Kapat</button>
     `);
-  } else alert('Hata: ' + r.error);
+  } else uiToast('Hata: ' + r.error, 'err');
 }
 
 async function toggleCustomer(id) {
@@ -526,7 +529,7 @@ async function toggleCustomer(id) {
 }
 
 async function deleteCustomer(id, name) {
-  if (!confirm(`"${name}" silinsin mi?`)) return;
+  if (!await uiConfirm(`"${name}" silinsin mi?`, { danger: true, confirmLabel: 'Sil' })) return;
   await apiFetch(`/api/admin/customers/${id}`, { method: 'DELETE' });
   renderCustomers();
 }
@@ -568,20 +571,20 @@ async function saveEdit(id) {
 }
 
 async function resetToken(id) {
-  if (!confirm('Token yenilensin mi? Müşterinin mevcut tokeni geçersiz olur.')) return;
+  if (!await uiConfirm('Token yenilensin mi? Müşterinin mevcut tokeni geçersiz olur.', { danger: true, confirmLabel: 'Yenile' })) return;
   const r = await apiFetch(`/api/admin/customers/${id}/reset-token`, { method: 'POST' });
   renderCustomers();
   if (r.ok) {
     openModal('🔑 Yeni Token', `
       <div class="card">
         <div class="card-title">API Token</div>
-        <div class="token-box" onclick="navigator.clipboard?.writeText('${r.token}');alert('Kopyalandı!')">${r.token}</div>
+        <div class="token-box" onclick="copyAndToast('${r.token}')">${r.token}</div>
       </div>
       <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="closeModal()">Kapat</button>
     `);
     return;
   }
-  alert('Hata: ' + (r.error || 'bilinmeyen hata'));
+  uiToast('Hata: ' + (r.error || 'bilinmeyen hata'), 'err');
   closeModal();
 }
 
@@ -657,7 +660,7 @@ async function startConnect(method) {
 }
 
 async function startConnectPairing() {
-  const phone = prompt('WhatsApp telefon numarası (ülke koduyla, +90 dahil):');
+  const phone = await uiPrompt('WhatsApp telefon numarası (ülke koduyla, +90 dahil):');
   if (!phone) return;
   await apiFetch(`/api/admin/customers/${currentCustomerId}`, { method: 'PUT', body: JSON.stringify({ phone }) });
   document.getElementById('conn-content').innerHTML = `<div class="spin" style="width:30px;height:30px"></div><div style="color:var(--muted);margin-top:8px;font-size:13px">Kod alınıyor...</div>`;
@@ -665,7 +668,7 @@ async function startConnectPairing() {
 }
 
 async function disconnectWA() {
-  if (!confirm('Bağlantı kesilsin mi?')) return;
+  if (!await uiConfirm('Bağlantı kesilsin mi?', { danger: true, confirmLabel: 'Kes' })) return;
   await apiFetch(`/api/admin/customers/${currentCustomerId}/disconnect`, { method: 'POST' });
   closeModal();
   renderCustomers();
@@ -901,8 +904,8 @@ async function renderBroadcast() {
 async function sendBroadcast() {
   const message = document.getElementById('bc-msg').value.trim();
   const plan_filter = document.getElementById('bc-filter').value;
-  if (!message) return alert('Mesaj gerekli');
-  if (!confirm(`Duyuru gönderilsin mi?`)) return;
+  if (!message) { uiToast('Mesaj gerekli', 'err'); return; }
+  if (!await uiConfirm('Duyuru gönderilsin mi?', { confirmLabel: 'Gönder' })) return;
 
   document.getElementById('bc-result').innerHTML = '<span style="color:var(--muted)">Gönderiliyor...</span>';
 
@@ -955,7 +958,7 @@ async function renderBlacklist(q = '') {
 }
 
 async function removeFromBlacklist(id) {
-  if (!confirm('Kara listeden çıkarılsın mı? Tekrar demo alabilir.')) return;
+  if (!await uiConfirm('Kara listeden çıkarılsın mı? Tekrar demo alabilir.', { danger: true, confirmLabel: 'Çıkar' })) return;
   await apiFetch(`/api/admin/blacklist/${id}`, { method: 'DELETE' });
   renderBlacklist();
 }
@@ -978,7 +981,7 @@ async function addToBlacklist() {
     })
   });
   if (r.ok) { closeModal(); renderBlacklist(); }
-  else alert('Hata: ' + r.error);
+  else uiToast('Hata: ' + r.error, 'err');
 }
 
 // ── SAYFALAR ─────────────────────────────────────────────────────
@@ -1137,7 +1140,7 @@ async function loadCustomerPanel(token) {
     </div>
     <div class="card">
       <div class="card-title">API Token</div>
-      <div class="token-box" onclick="navigator.clipboard?.writeText('${t}');alert('Kopyalandı!')">${t}</div>
+      <div class="token-box" onclick="copyAndToast('${t}')">${t}</div>
     </div>
     <div class="card">
       <div class="card-title">Mesaj Gönder (Test)</div>
@@ -1163,7 +1166,7 @@ headers: { 'x-api-token': '${t}' }
 async function testSend(token) {
   const phone = document.getElementById('test-phone').value.trim();
   const message = document.getElementById('test-msg').value.trim();
-  if (!phone || !message) return alert('Telefon ve mesaj gerekli');
+  if (!phone || !message) { uiToast('Telefon ve mesaj gerekli', 'err'); return; }
   const r = await fetch('/api/send', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-token': token },
