@@ -9,6 +9,7 @@ const fs = require('fs');
 const db = require('./database');
 const wa = require('./whatsapp');
 const scheduler = require('./scheduler');
+const push = require('./push');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -652,6 +653,25 @@ app.get('/api/webhook', customerAuth, (req, res) => {
   res.json({ webhook_url: req.customer.webhook_url || null });
 });
 
+// ── PUSH BİLDİRİMLERİ (yeni mesaj, WhatsApp bağlantı kopması) ────────────
+app.get('/api/push/vapid-public-key', (req, res) => {
+  res.json({ ok: true, key: push.getPublicKey() });
+});
+
+app.post('/api/push/subscribe', customerAuth, (req, res) => {
+  const sub = req.body;
+  if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) {
+    return res.status(400).json({ error: 'Geçersiz abonelik' });
+  }
+  db.addPushSubscription(req.customer.id, sub);
+  res.json({ ok: true });
+});
+
+app.post('/api/push/unsubscribe', customerAuth, (req, res) => {
+  if (req.body?.endpoint) db.removePushSubscription(req.body.endpoint);
+  res.json({ ok: true });
+});
+
 // Numara kontrolü
 app.post('/api/check', customerAuth, async (req, res) => {
   const { phones } = req.body;
@@ -1152,6 +1172,7 @@ app.listen(PORT, async () => {
   // Veritabanını başlat
   await db.initDb();
   console.log('✅ Veritabanı hazır');
+  push.ensureVapidKeys();
 
   if (!db.adminExists()) {
     console.log('\n⚠️  İlk kurulum — Admin hesabı oluşturun:');

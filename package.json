@@ -21,7 +21,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "pino": "^8.19.0",
-    "pino-pretty": "^11.0.0"
+    "pino-pretty": "^11.0.0",
+    "web-push": "^4.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

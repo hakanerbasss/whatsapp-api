@@ -8,6 +8,7 @@ const { spawn } = require('child_process');
 const QRCode = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./database');
+const push = require('./push');
 const EventEmitter = require('events');
 
 const SESSION_DIR = path.join(__dirname, '../data/sessions');
@@ -190,6 +191,16 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
         delete connections[customerId];
         db.upsertConnection(customerId, { status: 'logged_out', wa_number: null });
         waEvents.emit(`status_${customerId}`, { status: 'logged_out' });
+        // Yalnızca kendiliğinden düzelemeyecek (yeniden bağlanmayı denemeyen) gerçek kopmalarda
+        // bildirim gönderiyoruz — her geçici ağ sıçramasında bildirim yağdırmamak için.
+        const cust = db.getCustomerById(customerId);
+        if (cust) {
+          push.sendToCustomer(customerId, {
+            title: 'WhatsApp bağlantısı koptu',
+            body: 'Tekrar bağlanmak için panele girip QR okutun ya da telefon numarasıyla eşleştirin.',
+            url: '/musteri?token=' + cust.token
+          }).catch(() => {});
+        }
       }
     }
 
@@ -282,6 +293,15 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
       const row = db.addMessage(customerId, phone, 'in', msgType, text || null, mediaPath, mediaMimetype, msg.key.id, 'received');
       db.unarchiveChat(customerId, phone); // Gerçek WhatsApp'ta olduğu gibi: yeni mesaj gelince arşivden kendiliğinden çıkar
       waEvents.emit(`chat_${customerId}_${phone}`, { event: 'message', ...row });
+
+      const contact = db.getContactByPhone(customerId, phone);
+      const typeLabel = { image: '📷 Fotoğraf', video: '🎬 Video', audio: '🎤 Sesli mesaj', document: '📄 Belge', location: '📍 Konum', contact: '👤 Kişi', sticker: '🌟 Çıkartma' };
+      push.sendToCustomer(customerId, {
+        title: contact?.name || phone,
+        body: text || typeLabel[msgType] || 'Yeni mesaj',
+        url: '/sohbet?token=' + customer?.token,
+        unreadCount: db.getTotalUnreadCount(customerId)
+      }).catch(() => {});
     });
   });
 

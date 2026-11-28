@@ -136,6 +136,7 @@ input,textarea{font-family:inherit;}
 </style>
 </head>
 <body>
+<script src="/ui.js"></script>
 
 <div id="login-wrap" class="login-wrap" style="display:none">
   <div class="login-box">
@@ -528,7 +529,7 @@ async function toggleArchiveCurrentChat() {
 async function deleteCurrentChat() {
   const menu = document.getElementById('cp-menu');
   if (menu) menu.style.display = 'none';
-  if (!confirm('Bu sohbetin tüm mesaj geçmişi kalıcı olarak silinecek. Bu işlem geri alınamaz. Emin misiniz?')) return;
+  if (!await uiConfirm('Bu sohbetin tüm mesaj geçmişi kalıcı olarak silinecek. Bu işlem geri alınamaz. Emin misiniz?', { danger: true, confirmLabel: 'Sil' })) return;
   await api('/api/chat/' + activePhone, { method: 'DELETE' });
   closeConversation();
   await loadConversations();
@@ -704,7 +705,7 @@ async function sendCurrent() {
     }
     const r = await fetch('/api/chat/' + activePhone + '/send', { method: 'POST', headers: { 'x-api-token': currentToken }, body: fd });
     const data = await r.json();
-    if (!data.ok) { alert('❌ ' + (data.error || 'Gönderilemedi')); btn.disabled = false; return; }
+    if (!data.ok) { uiToast(data.error || 'Gönderilemedi', 'err'); btn.disabled = false; return; }
     renderBubble(data.message);
     lastMsgId = Math.max(lastMsgId, data.message.id);
     input.value = '';
@@ -714,7 +715,7 @@ async function sendCurrent() {
     m.scrollTop = m.scrollHeight;
     loadConversations();
   } catch(e) {
-    alert('❌ Gönderme hatası: ' + e.message);
+    uiToast('Gönderme hatası: ' + e.message, 'err');
   }
   btn.disabled = false;
 }
@@ -817,7 +818,7 @@ async function startRecording() {
     showRecordingPill();
     recordInterval = setInterval(() => { recSecs++; updateRecTimer(); }, 1000);
   } catch(e) {
-    alert('❌ Mikrofon erişimi reddedildi');
+    uiToast('Mikrofon erişimi reddedildi', 'err');
   }
 }
 
@@ -903,14 +904,14 @@ async function sendRecordedBlob(blob) {
     const r = await fetch('/api/chat/' + activePhone + '/send', { method: 'POST', headers: { 'x-api-token': currentToken }, body: fd });
     const data = await r.json();
     restoreIdlePill();
-    if (!data.ok) { alert('❌ ' + (data.error || 'Gönderilemedi')); return; }
+    if (!data.ok) { uiToast(data.error || 'Gönderilemedi', 'err'); return; }
     renderBubble(data.message);
     lastMsgId = Math.max(lastMsgId, data.message.id);
     document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
     loadConversations();
   } catch(e) {
     restoreIdlePill();
-    alert('❌ Gönderme hatası: ' + e.message);
+    uiToast('Gönderme hatası: ' + e.message, 'err');
   }
 }
 

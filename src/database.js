@@ -67,6 +67,7 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS chat_reads (customer_id INTEGER NOT NULL, contact_phone TEXT NOT NULL, last_read_id INTEGER DEFAULT 0, PRIMARY KEY(customer_id, contact_phone));
     CREATE TABLE IF NOT EXISTS scheduled_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, message_type TEXT NOT NULL, payload TEXT NOT NULL, media_path TEXT, media_mimetype TEXT, contacts TEXT NOT NULL, batch_size INTEGER, batch_delay_ms INTEGER, message_delay_ms INTEGER NOT NULL, run_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', sent_count INTEGER DEFAULT 0, fail_count INTEGER DEFAULT 0, next_index INTEGER DEFAULT 0, error TEXT, created_at TEXT DEFAULT (datetime('now')), started_at TEXT, finished_at TEXT);
     CREATE TABLE IF NOT EXISTS archived_chats (customer_id INTEGER NOT NULL, contact_phone TEXT NOT NULL, archived_at TEXT DEFAULT (datetime('now')), PRIMARY KEY(customer_id, contact_phone));
+    CREATE TABLE IF NOT EXISTS push_subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, endpoint TEXT UNIQUE NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')));
   `);
   saveDb();
 }
@@ -280,6 +281,27 @@ function getUnreadCounts(customerId) {
     GROUP BY m.contact_phone`, [customerId]);
 }
 
+function getTotalUnreadCount(customerId) {
+  return get(`
+    SELECT COUNT(*) as c
+    FROM messages m
+    LEFT JOIN chat_reads r ON r.customer_id=m.customer_id AND r.contact_phone=m.contact_phone
+    WHERE m.customer_id=? AND m.direction='in' AND m.id > COALESCE(r.last_read_id,0)`, [customerId])?.c || 0;
+}
+
+// ── PUSH BİLDİRİMLERİ ─────────────────────────────────────────────
+function addPushSubscription(customerId, sub) {
+  run(`INSERT INTO push_subscriptions (customer_id,endpoint,p256dh,auth) VALUES (?,?,?,?)
+       ON CONFLICT(endpoint) DO UPDATE SET customer_id=excluded.customer_id, p256dh=excluded.p256dh, auth=excluded.auth`,
+    [customerId, sub.endpoint, sub.keys.p256dh, sub.keys.auth]);
+}
+function removePushSubscription(endpoint) {
+  run('DELETE FROM push_subscriptions WHERE endpoint=?', [endpoint]);
+}
+function getPushSubscriptions(customerId) {
+  return all('SELECT * FROM push_subscriptions WHERE customer_id=?', [customerId]);
+}
+
 // ── ZAMANLANMIŞ TOPLU GÖNDERİM ───────────────────────────────────
 // Tarayıcı kapansa/telefon uyusa bile gönderilsin diye tamamen sunucu tarafında,
 // veritabanına kaydedilmiş bir kuyruk olarak tutulur (bkz. src/scheduler.js).
@@ -321,4 +343,4 @@ function cancelScheduledJob(id, customerId) {
   return true;
 }
 
-module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob, archiveChat, unarchiveChat, getArchivedPhones, deleteChatHistory };
+module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob, archiveChat, unarchiveChat, getArchivedPhones, deleteChatHistory, getTotalUnreadCount, addPushSubscription, removePushSubscription, getPushSubscriptions };

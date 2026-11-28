@@ -85,6 +85,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 </style>
 </head>
 <body>
+<script src="/ui.js"></script>
 
 <!-- Token Giriş -->
 <div id="login-wrap" class="login-wrap" style="display:none">
@@ -859,7 +860,7 @@ async function deleteContact(i) {
 }
 
 async function clearContacts() {
-  if (!confirm('Tüm rehber silinsin mi?')) return;
+  if (!await uiConfirm('Tüm rehber silinsin mi?', { danger: true, confirmLabel: 'Sil' })) return;
   await api('/api/contacts', { method: 'DELETE' });
   selectedPhones.clear();
   saveSelection();
@@ -1047,7 +1048,7 @@ function updateSettingsSummary() {
 // ── GÖNDER ───────────────────────────────────────────────────────
 async function startSending() {
   const selected = contacts.filter(c => c.selected);
-  if (!selected.length) { alert('En az bir kişi seçin'); return; }
+  if (!selected.length) { uiToast('En az bir kişi seçin', 'err'); return; }
 
   const delay = parseInt(document.getElementById('send-delay').value);
   const batchSize = parseInt(document.getElementById('batch-size').value) || 0;
@@ -1178,12 +1179,12 @@ async function startSending() {
 // ── ZAMANLI GÖNDERİM — sunucu tarafında kuyruğa alınır, tarayıcı kapansa da gönderilir ──
 async function scheduleSending() {
   const selected = contacts.filter(c => c.selected);
-  if (!selected.length) { alert('En az bir kişi seçin'); return; }
+  if (!selected.length) { uiToast('En az bir kişi seçin', 'err'); return; }
 
   const scheduleInput = document.getElementById('schedule-at');
-  if (!scheduleInput.value) { alert('Zamanlamak için bir tarih/saat seçin'); return; }
+  if (!scheduleInput.value) { uiToast('Zamanlamak için bir tarih/saat seçin', 'err'); return; }
   const runAt = new Date(scheduleInput.value);
-  if (isNaN(runAt.getTime()) || runAt <= new Date()) { alert('Seçtiğiniz zaman geçmişte kalıyor, ileri bir zaman seçin'); return; }
+  if (isNaN(runAt.getTime()) || runAt <= new Date()) { uiToast('Seçtiğiniz zaman geçmişte kalıyor, ileri bir zaman seçin', 'err'); return; }
 
   const fd = new FormData();
   fd.append('message_type', msgType);
@@ -1233,7 +1234,7 @@ async function scheduleSending() {
       if (caption) fd.append('caption', caption);
     }
   } catch (e) {
-    alert('❌ ' + e.message);
+    uiToast(e.message, 'err');
     return;
   }
 
@@ -1243,11 +1244,11 @@ async function scheduleSending() {
     const r = await fetch('/api/bulk/schedule', { method: 'POST', headers: { 'x-api-token': currentToken }, body: fd });
     const data = await r.json();
     if (!data.ok) throw new Error(data.error);
-    alert(`✅ Zamanlandı! ${selected.length} kişiye ${runAt.toLocaleString('tr-TR')} tarihinde gönderilecek.`);
+    uiToast(`Zamanlandı! ${selected.length} kişiye ${runAt.toLocaleString('tr-TR')} tarihinde gönderilecek.`, 'ok');
     scheduleInput.value = '';
     loadScheduledJobs();
   } catch (e) {
-    alert('❌ ' + e.message);
+    uiToast(e.message, 'err');
   }
   btn.disabled = false;
 }
@@ -1299,14 +1300,14 @@ function renderScheduledJobs(jobs) {
 }
 
 async function cancelScheduledJob(id) {
-  if (!confirm('Bu zamanlanmış gönderimi iptal etmek istiyor musunuz?')) return;
+  if (!await uiConfirm('Bu zamanlanmış gönderimi iptal etmek istiyor musunuz?', { danger: true, confirmLabel: 'İptal Et' })) return;
   try {
     const r = await fetch('/api/bulk/scheduled/' + id, { method: 'DELETE', headers: { 'x-api-token': currentToken } });
     const data = await r.json();
     if (!data.ok) throw new Error(data.error);
     loadScheduledJobs();
   } catch (e) {
-    alert('❌ ' + e.message);
+    uiToast(e.message, 'err');
   }
 }
 </script>
