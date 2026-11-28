@@ -591,6 +591,13 @@ function renderDashboard(d, token) {
   }
 }
 
+function copyPairingCode(code, el) {
+  copyToClipboard(code).then(() => {
+    uiToast('Kod kopyalandı!', 'ok');
+    el.style.color = 'var(--accent2)';
+  });
+}
+
 function copyToken() {
   copyToClipboard(currentToken).then(() => {
     const btn = document.getElementById('copy-btn');
@@ -699,7 +706,7 @@ async function startConnect(method) {
         // dokununca açılan bir adım adım anlatım kartı var — hem her zaman yardımcı olur hem bildirim
         // gelmeme ihtimaline karşı bir yedek.
         box.innerHTML = `
-          <div style="font-size:32px;font-weight:800;letter-spacing:6px;color:var(--accent);padding:10px;cursor:pointer" onclick="copyToClipboard('${data.code}');this.style.color='var(--accent2)'">${data.code}</div>
+          <div style="font-size:32px;font-weight:800;letter-spacing:6px;color:var(--accent);padding:10px;cursor:pointer" onclick="copyPairingCode('${data.code}', this)">${data.code}</div>
           <div style="font-size:11px;color:var(--muted);margin-bottom:8px">👆 Koda dokunup kopyalayın</div>
           <div class="card" style="padding:10px 14px;cursor:pointer;text-align:left" onclick="this.querySelector('.code-help-body').style.display=this.querySelector('.code-help-body').style.display==='none'?'':'none'">
             <div style="color:var(--accent2);font-size:13px;font-weight:700">ℹ️ Telefonunuzda bildirim gelmediyse, nasıl bağlanırım?</div>

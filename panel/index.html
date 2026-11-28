@@ -863,9 +863,16 @@ async function sendCustomerMessage(id) {
 }
 
 // ── DUYURU ───────────────────────────────────────────────────────
-function renderBroadcast() {
+async function renderBroadcast() {
   document.getElementById('page-title').textContent = 'Duyuru';
   document.getElementById('topbar-actions').innerHTML = '';
+  // Hedef kitle seçenekleri Paket Ayarları'ndaki GÜNCEL paket adlarından üretilir —
+  // sabit "Sadece Basic/Pro/Unlimited" yazısı admin paket adını değiştirince eskiyordu.
+  const s = await apiFetch('/api/admin/settings');
+  const pkgs = s.packages || [
+    { id: 'basic', name: 'Basic' }, { id: 'pro', name: 'Pro' }, { id: 'unlimited', name: 'Unlimited' }
+  ];
+  const planOptions = pkgs.map(p => `<option value="${p.id}">Sadece ${p.name}</option>`).join('');
   document.getElementById('page-content').innerHTML = `
     <div class="card">
       <div class="card-title" style="display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg> Toplu Duyuru Gönder</div>
@@ -877,9 +884,7 @@ function renderBroadcast() {
         <label>Hedef Kitle</label>
         <select id="bc-filter">
           <option value="all">Tüm Aktif Müşteriler</option>
-          <option value="basic">Sadece Basic</option>
-          <option value="pro">Sadece Pro</option>
-          <option value="unlimited">Sadece Unlimited</option>
+          ${planOptions}
           <option value="demo">Sadece Demo</option>
         </select>
       </div>
