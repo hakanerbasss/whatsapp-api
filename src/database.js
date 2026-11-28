@@ -82,6 +82,9 @@ function migrate() {
     { table: 'scheduled_jobs', column: 'recurrence', ddl: 'ALTER TABLE scheduled_jobs ADD COLUMN recurrence TEXT' },
     { table: 'scheduled_jobs', column: 'total_sent_count', ddl: 'ALTER TABLE scheduled_jobs ADD COLUMN total_sent_count INTEGER DEFAULT 0' },
     { table: 'scheduled_jobs', column: 'total_fail_count', ddl: 'ALTER TABLE scheduled_jobs ADD COLUMN total_fail_count INTEGER DEFAULT 0' },
+    // SQLite ALTER TABLE ADD COLUMN ile sabit bir DEFAULT, var olan satırlara da uygulanır —
+    // mevcut müşteriler ayrıca "kapalı" görünmesin diye varsayılan açık (1).
+    { table: 'customers', column: 'notify_scheduled', ddl: 'ALTER TABLE customers ADD COLUMN notify_scheduled INTEGER DEFAULT 1' },
   ];
   for (const m of columnAdditions) {
     const existing = all(`PRAGMA table_info(${m.table})`).map(c => c.name);

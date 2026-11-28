@@ -169,6 +169,12 @@ input:focus{border-color:var(--accent);}
       <button id="push-toggle-btn" onclick="toggleNotifications()" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--accent2);background:rgba(0,212,255,.08);color:var(--accent2);cursor:pointer;font-size:13px;display:inline-flex;align-items:center;justify-content:center;gap:6px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg> <span id="push-toggle-label">Bildirimleri Aç</span>
       </button>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;color:var(--text)">Zamanlanmış/periyodik mesaj gönderilince bildir</div>
+        <button id="notify-scheduled-toggle" onclick="toggleScheduledNotify()" title="Zamanlanmış/periyodik gönderim bildirimleri" style="flex-shrink:0;width:42px;height:24px;border-radius:12px;border:none;cursor:pointer;position:relative;background:var(--border);transition:background .2s">
+          <span id="notify-scheduled-dot" style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .2s"></span>
+        </button>
+      </div>
     </div>
 
     <!-- API Token -->
@@ -402,6 +408,9 @@ async function loadDashboard(token) {
 }
 
 function renderDashboard(d, token) {
+  notifyScheduledPref = d.notify_scheduled !== false;
+  renderScheduledNotifyToggle();
+
   document.getElementById('d-name').textContent = d.name;
   const planBadge = document.getElementById('d-plan-badge');
   planBadge.innerHTML = d.plan === 'demo' ? GIFT_ICON + ' Demo' : d.plan === 'pro' ? STAR_ICON + ' Pro' : CHECK_ICON + ' Basic';
@@ -788,6 +797,36 @@ async function toggleNotifications() {
     uiToast('Bildirimler açılamadı: ' + e.message, 'err');
   }
   await updatePushToggleUI();
+}
+
+// Ana "Bildirimleri Aç" anahtarından bağımsız bir alt-tercih: zamanlanmış/periyodik bir
+// gönderim tamamlandığında (ya da başarısız olduğunda) ayrıca bildirim gönderilsin mi.
+let notifyScheduledPref = true;
+
+function renderScheduledNotifyToggle() {
+  const toggle = document.getElementById('notify-scheduled-toggle');
+  const dot = document.getElementById('notify-scheduled-dot');
+  if (!toggle) return;
+  toggle.style.background = notifyScheduledPref ? 'var(--accent)' : 'var(--border)';
+  dot.style.transform = notifyScheduledPref ? 'translateX(18px)' : 'translateX(0)';
+}
+
+async function toggleScheduledNotify() {
+  notifyScheduledPref = !notifyScheduledPref;
+  renderScheduledNotifyToggle();
+  try {
+    const r = await fetch('/api/notify-prefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-token': currentToken },
+      body: JSON.stringify({ notify_scheduled: notifyScheduledPref })
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+  } catch (e) {
+    notifyScheduledPref = !notifyScheduledPref;
+    renderScheduledNotifyToggle();
+    uiToast('Kaydedilemedi: ' + e.message, 'err');
+  }
 }
 </script>
 <script>

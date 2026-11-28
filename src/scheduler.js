@@ -6,6 +6,7 @@
 const fs = require('fs');
 const db = require('./database');
 const wa = require('./whatsapp');
+const push = require('./push');
 
 const CHECK_INTERVAL_MS = 20 * 1000;
 
@@ -138,12 +139,39 @@ async function runJob(job) {
   }
 }
 
+// Müşteri "zamanlanmış/periyodik gönderim bildirimleri"ni açtıysa, bir döngü bitince
+// (başarılı ya da başarısız) ayrıca push bildirimi atar — ana "bildirimleri aç" anahtarından
+// bağımsız, kendi tercihi (bkz. POST /api/notify-prefs). sendToCustomer zaten abonelik
+// yoksa sessizce no-op olduğundan ayrıca kontrol etmeye gerek yok.
+function notifyJobOutcome(job, recurrence, { sent, fail, error }) {
+  const customer = db.getCustomerById(job.customer_id);
+  if (!customer || !customer.notify_scheduled) return;
+  const url = '/toplu?token=' + customer.token;
+  // Medya eksikliği, geçersiz numara gibi kişi bazlı hatalar döngünün kendisini kesmiyor
+  // (fail_count'a yazılıp devam ediyor) — o yüzden "herkese gönderilemedi" durumunu da
+  // gerçek bir hata gibi ele alıyoruz, "0 kişiye gönderildi" demek yanıltıcı olurdu.
+  const allFailed = !error && (sent || 0) === 0 && (fail || 0) > 0;
+  let title, body;
+  if (error) {
+    title = recurrence ? 'Periyodik mesaj gönderiminde hata' : 'Zamanlanmış mesaj gönderilemedi';
+    body = error + (recurrence ? ' — bir sonraki periyotta tekrar denenecek.' : '');
+  } else if (allFailed) {
+    title = 'Zamanlanmış mesaj gönderilemedi';
+    body = `${fail} kişiye gönderilemedi — kişi listesini ve medya dosyasını kontrol edin.`;
+  } else {
+    title = recurrence ? 'Periyodik mesaj gönderildi' : 'Zamanlanmış mesaj gönderildi';
+    body = `${sent || 0} kişiye gönderildi` + (fail ? `, ${fail} başarısız` : '');
+  }
+  push.sendToCustomer(job.customer_id, { title, body, url }).catch(() => {});
+}
+
 // Bir döngü bitince: tek seferlikse işi 'completed'/'failed' olarak kapatır ve medyayı siler.
 // Periyodikse bir sonraki çalışma zamanını hesaplayıp işi 'pending'e döndürür (medya SİLİNMEZ —
 // bir sonraki periyotta da lazım) ve toplam gönderim sayaçlarını biriktirir.
 function finishCycle(job, { sent, fail, error } = {}) {
   const recurrence = job.recurrence ? JSON.parse(job.recurrence) : null;
   const now = new Date().toISOString();
+  notifyJobOutcome(job, recurrence, { sent, fail, error });
 
   if (!recurrence) {
     db.updateScheduledJob(job.id, error

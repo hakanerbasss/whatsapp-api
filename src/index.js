@@ -672,6 +672,13 @@ app.post('/api/push/unsubscribe', customerAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// Zamanlanmış/periyodik gönderimler tamamlandığında (ya da başarısız olduğunda) ayrıca
+// bildirim gönderilsin mi — ana "bildirimleri aç" anahtarından bağımsız, kendi tercihi.
+app.post('/api/notify-prefs', customerAuth, (req, res) => {
+  db.updateCustomer(req.customer.id, { notify_scheduled: req.body?.notify_scheduled ? 1 : 0 });
+  res.json({ ok: true });
+});
+
 // Numara kontrolü
 app.post('/api/check', customerAuth, async (req, res) => {
   const { phones } = req.body;
@@ -1242,6 +1249,7 @@ app.get('/api/musteri/dashboard', customerAuthDashboard, (req, res) => {
     remaining: Math.max(0, c.daily_limit - (c.plan === 'demo' ? totalUsage : usage)),
     expires_at: c.expires_at, is_expired: isExpired, is_limit_done: isLimitDone,
     wa_status: conn.status, wa_number: conn.phone,
+    notify_scheduled: !!c.notify_scheduled,
     packages: JSON.parse(db.getSetting('packages') || '[]'),
     contact: {
       phone: db.getSetting('contact_phone') || null,
