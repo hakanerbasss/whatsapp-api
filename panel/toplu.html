@@ -26,6 +26,17 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
 .icon-btn:hover{border-color:var(--accent2);color:var(--accent2);}
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;}
 .card-title{font-size:11px;color:var(--accent2);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;}
+/* Akordeon — Rehber ve Ayarlar kartları: liste uzayınca ekranı kaplamasın diye açılır/kapanır */
+.accordion{background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden;}
+.accordion-header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:16px 18px;cursor:pointer;user-select:none;}
+.accordion-header:hover{background:rgba(255,255,255,.02);}
+.accordion-title-wrap{display:flex;align-items:baseline;gap:8px;min-width:0;}
+.accordion-title{font-size:11px;color:var(--accent2);letter-spacing:2px;text-transform:uppercase;font-weight:700;flex-shrink:0;}
+.accordion-summary{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.accordion-arrow{font-size:12px;color:var(--muted);transition:transform .3s;flex-shrink:0;}
+.accordion-arrow.open{transform:rotate(180deg);}
+.accordion-body{padding:0 18px;max-height:0;overflow:hidden;transition:max-height .4s ease, padding .3s ease;}
+.accordion-body.open{max-height:2000px;padding:0 18px 18px;}
 label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px;}
 input,select,textarea{width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;transition:border-color .2s;-webkit-appearance:none;}
 input[type="checkbox"]{width:auto;background:none;border:none;padding:0;border-radius:0;-webkit-appearance:checkbox;appearance:checkbox;}
@@ -96,6 +107,72 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
       <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
         <span style="font-size:12px;color:var(--muted)" id="header-info"></span>
         <button class="icon-btn" id="theme-btn" onclick="toggleTheme()" title="Tema"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg></button>
+      </div>
+    </div>
+
+    <!-- Rehber — akordeon, varsayılan açık (önce kişi seçilir), seçim bittikten sonra kapatılıp yer açılabilir -->
+    <div class="accordion">
+      <div class="accordion-header" onclick="toggleAccordion('acc-rehber')">
+        <div class="accordion-title-wrap">
+          <span class="accordion-title">Rehber</span>
+          <span class="accordion-summary" id="rehber-summary">0 kişi · 0 seçili</span>
+        </div>
+        <span class="accordion-arrow open" id="arrow-acc-rehber">▼</span>
+      </div>
+      <div class="accordion-body open" id="acc-rehber">
+        <div class="tabs">
+          <button class="tab active" onclick="showTab('contacts',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> Kişiler</button>
+          <button class="tab" onclick="showTab('add',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Ekle</button>
+          <button class="tab" onclick="showTab('import',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> İmport</button>
+        </div>
+
+        <!-- Kişiler Listesi -->
+        <div id="tab-contacts">
+          <input type="text" id="contact-search" placeholder="🔍 İsim veya numara ara..." oninput="filterContacts()" style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-size:12px;color:var(--muted)" id="contact-count">0 kişi</div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-ghost" style="padding:5px 10px;font-size:11px" onclick="selectAll()">Tümünü Seç</button>
+              <button class="btn btn-ghost" style="padding:5px 10px;font-size:11px" onclick="selectNone()">Seçimi Kaldır</button>
+            </div>
+          </div>
+          <div id="contact-list" style="max-height:300px;overflow-y:auto">
+            <div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Rehber boş. Kişi ekleyin.</div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:10px">
+            <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="exportContacts()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Rehberi İndir</button>
+            <button class="btn btn-danger" style="font-size:11px" onclick="clearContacts()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> Temizle</button>
+          </div>
+        </div>
+
+        <!-- Kişi Ekle -->
+        <div id="tab-add" style="display:none">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px">📥 Google rehberinizi indirmek için: <a href="https://contacts.google.com" target="_blank" style="color:var(--accent)">contacts.google.com</a> → Dışa Aktar → CSV</div>
+            <div class="field"><label>Ad Soyad *</label><input type="text" id="add-name" placeholder="Ahmet Yılmaz"></div>
+          <div class="field"><label>Telefon * (905551234567)</label><input type="tel" id="add-phone" placeholder="905551234567"></div>
+          <button class="btn btn-primary btn-full" onclick="addContact()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Ekle</button>
+          <div id="add-result" style="margin-top:8px;font-size:12px"></div>
+        </div>
+
+        <!-- Import -->
+        <div id="tab-import" style="display:none">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.7">
+            <strong style="color:var(--text)">CSV formatı:</strong><br>
+            isim,telefon<br>
+            Ahmet Yılmaz,905551234567<br>
+            Mehmet Kaya,905559876543
+          </div>
+          <div class="field">
+            <label>CSV veya JSON dosya seç</label>
+            <input type="file" id="import-file" accept=".csv,.json,text/csv,text/plain,*/*" onchange="importContacts(this)">
+          </div>
+          <div id="import-result" style="margin-top:8px;font-size:12px"></div>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+            <label style="margin-bottom:6px;display:block">Veya JSON yapıştır</label>
+            <textarea id="import-json" rows="4" placeholder='[{"isim":"Ahmet","telefon":"905551234567"}]'></textarea>
+            <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="importFromText()">İçe Aktar</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -278,82 +355,45 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
       </div>
     </div>
 
-    <!-- Rehber -->
-    <div class="card">
-      <div class="card-title">Rehber</div>
-      <div class="tabs">
-        <button class="tab active" onclick="showTab('contacts',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> Kişiler</button>
-        <button class="tab" onclick="showTab('add',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Ekle</button>
-        <button class="tab" onclick="showTab('import',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> İmport</button>
-      </div>
-
-      <!-- Kişiler Listesi -->
-      <div id="tab-contacts">
-        <input type="text" id="contact-search" placeholder="🔍 İsim veya numara ara..." oninput="filterContacts()" style="margin-bottom:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="font-size:12px;color:var(--muted)" id="contact-count">0 kişi</div>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-ghost" style="padding:5px 10px;font-size:11px" onclick="selectAll()">Tümünü Seç</button>
-            <button class="btn btn-ghost" style="padding:5px 10px;font-size:11px" onclick="selectNone()">Seçimi Kaldır</button>
-          </div>
-        </div>
-        <div id="contact-list" style="max-height:300px;overflow-y:auto">
-          <div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Rehber boş. Kişi ekleyin.</div>
-        </div>
-        <div style="display:flex;gap:6px;margin-top:10px">
-          <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="exportContacts()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Rehberi İndir</button>
-          <button class="btn btn-danger" style="font-size:11px" onclick="clearContacts()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> Temizle</button>
-        </div>
-      </div>
-
-      <!-- Kişi Ekle -->
-      <div id="tab-add" style="display:none">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">📥 Google rehberinizi indirmek için: <a href="https://contacts.google.com" target="_blank" style="color:var(--accent)">contacts.google.com</a> → Dışa Aktar → CSV</div>
-          <div class="field"><label>Ad Soyad *</label><input type="text" id="add-name" placeholder="Ahmet Yılmaz"></div>
-        <div class="field"><label>Telefon * (905551234567)</label><input type="tel" id="add-phone" placeholder="905551234567"></div>
-        <button class="btn btn-primary btn-full" onclick="addContact()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Ekle</button>
-        <div id="add-result" style="margin-top:8px;font-size:12px"></div>
-      </div>
-
-      <!-- Import -->
-      <div id="tab-import" style="display:none">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.7">
-          <strong style="color:var(--text)">CSV formatı:</strong><br>
-          isim,telefon<br>
-          Ahmet Yılmaz,905551234567<br>
-          Mehmet Kaya,905559876543
-        </div>
-        <div class="field">
-          <label>CSV veya JSON dosya seç</label>
-          <input type="file" id="import-file" accept=".csv,.json,text/csv,text/plain,*/*" onchange="importContacts(this)">
-        </div>
-        <div id="import-result" style="margin-top:8px;font-size:12px"></div>
-        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-          <label style="margin-bottom:6px;display:block">Veya JSON yapıştır</label>
-          <textarea id="import-json" rows="4" placeholder='[{"isim":"Ahmet","telefon":"905551234567"}]'></textarea>
-          <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="importFromText()">İçe Aktar</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Gönderim Ayarları -->
-    <div class="card">
-      <div class="card-title">Gönderim Ayarları</div>
-      <div class="field">
-        <label>Mesajlar arası bekleme (ms)</label>
-        <select id="send-delay">
-          
-          <option value="3000" selected>3 saniye (Minimum — önerilen)</option>
-          <option value="5000">5 saniye (Güvenli)</option>
-          <option value="10000">10 saniye (Çok güvenli)</option>
-        </select>
-      </div>
-    </div>
-
     <!-- Gönder Butonu -->
     <button class="btn btn-primary btn-full" id="send-btn" onclick="startSending()" style="font-size:15px;padding:14px">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Toplu Gönder
     </button>
+
+    <!-- Ayarlar — akordeon, varsayılan kapalı (ikincil ayarlar, ana akışı kaplamasın) -->
+    <div class="accordion">
+      <div class="accordion-header" onclick="toggleAccordion('acc-settings')">
+        <div class="accordion-title-wrap">
+          <span class="accordion-title">Ayarlar</span>
+          <span class="accordion-summary" id="settings-summary">3sn bekleme</span>
+        </div>
+        <span class="accordion-arrow" id="arrow-acc-settings">▼</span>
+      </div>
+      <div class="accordion-body" id="acc-settings">
+        <div class="field">
+          <label>Mesajlar arası bekleme</label>
+          <select id="send-delay" onchange="updateSettingsSummary()">
+            <option value="3000" selected>3 saniye (Minimum — önerilen)</option>
+            <option value="5000">5 saniye (Güvenli)</option>
+            <option value="10000">10 saniye (Çok güvenli)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Parti büyüklüğü (opsiyonel)</label>
+          <input type="number" id="batch-size" min="1" placeholder="Örn: 150 — boş bırakırsanız tek seferde gönderilir" onchange="updateSettingsSummary()">
+        </div>
+        <div class="field">
+          <label>Partiler arası bekleme (saniye)</label>
+          <select id="batch-delay" onchange="updateSettingsSummary()">
+            <option value="30" selected>30 saniye</option>
+            <option value="60">1 dakika</option>
+            <option value="300">5 dakika</option>
+            <option value="900">15 dakika</option>
+          </select>
+        </div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.6">Parti büyüklüğü girilirse, seçili kişiler bu sayıda gruplara bölünüp her grup arasında yukarıdaki süre kadar beklenir — örn. 500 kişiyi 150'lik partiler halinde, partiler arasında 1 dakika bekleyerek gönderebilirsiniz.</div>
+      </div>
+    </div>
 
     <!-- İlerleme -->
     <div id="progress-card" class="card" style="display:none;margin-top:12px">
@@ -497,6 +537,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.documentElement.setAttribute('data-theme', savedTheme);
   const btn = document.getElementById('theme-btn');
   if (btn) btn.innerHTML = savedTheme === 'light' ? SUN_ICON : MOON_ICON;
+  updateSettingsSummary();
 
   const urlToken = new URLSearchParams(window.location.search).get('token');
   const savedToken = localStorage.getItem('wa_customer_token');
@@ -734,6 +775,8 @@ function renderContacts() {
   const countEl = document.getElementById('contact-count');
   const selected = contacts.filter(c => c.selected).length;
   countEl.textContent = `${contacts.length} kişi · ${selected} seçili`;
+  const summaryEl = document.getElementById('rehber-summary');
+  if (summaryEl) summaryEl.textContent = `${contacts.length} kişi · ${selected} seçili`;
 
   if (!contacts.length) {
     el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Rehber boş. Kişi ekleyin.</div>';
@@ -942,12 +985,31 @@ function showTab(tab, el) {
   el.classList.add('active');
 }
 
+function toggleAccordion(id) {
+  const body = document.getElementById(id);
+  const arrow = document.getElementById('arrow-' + id);
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  if (arrow) arrow.classList.toggle('open', !isOpen);
+}
+
+function updateSettingsSummary() {
+  const delaySec = Math.round(parseInt(document.getElementById('send-delay').value) / 1000);
+  const batchSize = parseInt(document.getElementById('batch-size').value);
+  const el = document.getElementById('settings-summary');
+  el.textContent = batchSize > 0
+    ? `${delaySec}sn bekleme · ${batchSize}'li parti`
+    : `${delaySec}sn bekleme`;
+}
+
 // ── GÖNDER ───────────────────────────────────────────────────────
 async function startSending() {
   const selected = contacts.filter(c => c.selected);
   if (!selected.length) { alert('En az bir kişi seçin'); return; }
 
   const delay = parseInt(document.getElementById('send-delay').value);
+  const batchSize = parseInt(document.getElementById('batch-size').value) || 0;
+  const batchDelay = parseInt(document.getElementById('batch-delay').value) * 1000;
   const btn = document.getElementById('send-btn');
   btn.disabled = true;
   btn.textContent = '⏳ Gönderiliyor...';
@@ -1044,7 +1106,17 @@ async function startSending() {
     }
 
     log.scrollTop = log.scrollHeight;
-    if (i < selected.length - 1) await new Promise(r => setTimeout(r, delay));
+
+    if (i < selected.length - 1) {
+      const atBatchBoundary = batchSize > 0 && (i + 1) % batchSize === 0;
+      if (atBatchBoundary) {
+        log.innerHTML += `<div style="padding:8px;text-align:center;font-size:12px;color:var(--accent2)">⏸ Parti tamamlandı (${i + 1}/${selected.length}) — ${Math.round(batchDelay / 1000)} saniye bekleniyor...</div>`;
+        log.scrollTop = log.scrollHeight;
+        await new Promise(r => setTimeout(r, batchDelay));
+      } else {
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
   }
 
   // Tamamlandı
