@@ -428,6 +428,38 @@ async function disconnectCustomer(customerId) {
   db.upsertConnection(customerId, { status: 'disconnected', wa_number: null });
 }
 
+// LID (Linked ID) onarımı — bazı kişiler WhatsApp tarafından gerçek telefon numarası yerine
+// dahili bir kimlikle (LID) adreslenir. Bu çözümleme eklenmeden önce gelen mesajlar
+// veritabanına yanlışlıkla LID sayısıyla kaydedilmiş olabilir ("bilinmeyen gönderen" gibi
+// görünür). Yalnızca O AN bağlı olan bir bağlantının lidMapping önbelleği geçmiş bir LID'i
+// çözebilir — bu yüzden bu araç sadece bağlı müşteriler için çalışır. Gerçek bir telefon
+// numarasını @lid olarak sorgulamak eşleşme bulamaz (zaten LID olarak kayıtlı değildir), bu
+// yüzden burada TÜM konuşma kimlikleri denenebilir: yanlışlıkla dokunulacak gerçek numara yok.
+async function repairLidData(customerId) {
+  const conn = connections[customerId];
+  if (!conn || !conn.socket) throw new Error('WhatsApp bağlı değil — onarım için önce bağlanın');
+  const lidMapping = conn.socket.signalRepository?.lidMapping;
+  if (!lidMapping) throw new Error('Bu bağlantı LID eşlemesini desteklemiyor');
+
+  const candidates = db.getConversationPhones(customerId);
+  const fixes = [];
+  for (const oldPhone of candidates) {
+    if (!oldPhone) continue;
+    let resolved;
+    try {
+      resolved = await lidMapping.getPNForLID(oldPhone + '@lid');
+    } catch (e) {
+      continue; // bu kimlik için eşleme yok/çözülemedi — zarar yok, sadece atla
+    }
+    if (!resolved) continue;
+    const newPhone = normalizePhone(resolved.replace('@s.whatsapp.net', '').replace('@lid', ''));
+    if (!newPhone || newPhone === oldPhone) continue;
+    const result = db.mergeContactPhone(customerId, oldPhone, newPhone);
+    if (result.moved) fixes.push({ old_phone: oldPhone, new_phone: newPhone, messages_moved: result.moved });
+  }
+  return fixes;
+}
+
 function getStatus(customerId) {
   const conn = connections[customerId];
   if (!conn) return { status: 'disconnected' };
@@ -458,4 +490,4 @@ function getConn(customerId) {
   return connections[customerId]?.socket || null;
 }
 
-module.exports = { startConnection, sendMessage, sendChatMessage, buildAudioContent, disconnectCustomer, getStatus, getConn, waEvents, restoreConnections, normalizePhone };
+module.exports = { startConnection, sendMessage, sendChatMessage, buildAudioContent, disconnectCustomer, getStatus, getConn, waEvents, restoreConnections, normalizePhone, repairLidData };

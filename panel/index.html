@@ -428,6 +428,7 @@ async function renderCustomers() {
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-blue" style="flex:1;padding:8px;display:inline-flex;align-items:center;justify-content:center;gap:6px" onclick="openConnect(${c.id},'${c.name}')">${ICON_SMARTPHONE} WhatsApp Bağla</button>
         ${c.phone ? `<button class="btn btn-ghost" style="padding:8px 10px" onclick="openMessageModal(${c.id},'${c.name}')" title="Mesaj Gönder">${ICON_CHAT}</button>` : ''}
+        ${c.wa_status === 'connected' ? `<button class="btn btn-ghost" style="padding:8px 10px" onclick="repairLid(${c.id},'${c.name}')" title="Geçmiş sohbet verilerini onar (LID hatası)">${ICON_REFRESH}</button>` : ''}
         <button class="btn btn-ghost" style="padding:8px 10px" onclick="openEdit(${c.id})">${ICON_EDIT}</button>
         <button class="btn btn-ghost" style="padding:8px 10px" onclick="toggleCustomer(${c.id})">${c.status==='active'?ICON_PAUSE:ICON_PLAY}</button>
         <button class="btn btn-danger" style="padding:8px 10px" onclick="deleteCustomer(${c.id},'${c.name}')">${ICON_TRASH}</button>
@@ -545,6 +546,16 @@ async function deleteCustomer(id, name) {
   if (!await uiConfirm(`"${name}" silinsin mi?`, { danger: true, confirmLabel: 'Sil' })) return;
   await apiFetch(`/api/admin/customers/${id}`, { method: 'DELETE' });
   renderCustomers();
+}
+
+async function repairLid(id, name) {
+  const ok = await uiConfirm(`"${name}" için geçmiş sohbet verileri taranacak ve LID hatası nedeniyle yanlış kaydedilmiş konuşmalar varsa gerçek numaraya birleştirilecek. Devam edilsin mi?`, { confirmLabel: 'Tara ve Onar' });
+  if (!ok) return;
+  const r = await apiFetch(`/api/admin/customers/${id}/repair-lid`, { method: 'POST' });
+  if (r.error) { uiToast('Hata: ' + r.error, 'err'); return; }
+  if (!r.fixes.length) { uiToast('Onarılacak bir şey bulunamadı — veriler zaten doğru.', 'ok'); return; }
+  const total = r.fixes.reduce((s, f) => s + f.messages_moved, 0);
+  uiToast(`${r.fixes.length} konuşma birleştirildi (${total} mesaj taşındı).`, 'ok');
 }
 
 async function openEdit(id) {

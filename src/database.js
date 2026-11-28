@@ -343,6 +343,44 @@ function getConversationPhones(customerId) {
     SELECT contact_phone FROM chat_reads WHERE customer_id=?`, [customerId, customerId]).map(r => r.contact_phone);
 }
 
+// LID (Linked ID) onarımı: eski bir sohbet kimliğini (oldPhone — genelde yanlışlıkla
+// kaydedilmiş bir LID sayısı) gerçek numaraya (newPhone) taşır. messages'ta çakışma riski
+// yok (benzersizlik kısıtı yok); chat_reads/archived_chats'te PRIMARY KEY(customer_id,
+// contact_phone) olduğu için iki satır çakışabilir — en ileri okunan/arşiv durumunu koruyup
+// eskisini silerek birleştiriyoruz. contacts'ta gerçek numarada zaten bir kişi varsa
+// (beklenen durum) eski "hayalet" kişi sessizce silinir.
+function mergeContactPhone(customerId, oldPhone, newPhone) {
+  if (!oldPhone || !newPhone || oldPhone === newPhone) return { moved: 0 };
+  const movedMessages = get('SELECT COUNT(*) as c FROM messages WHERE customer_id=? AND contact_phone=?', [customerId, oldPhone])?.c || 0;
+  if (!movedMessages) return { moved: 0 }; // bu müşteri için hiç veri yoksa taşınacak bir şey de yok
+
+  run('UPDATE messages SET contact_phone=? WHERE customer_id=? AND contact_phone=?', [newPhone, customerId, oldPhone]);
+
+  const oldRead = get('SELECT last_read_id FROM chat_reads WHERE customer_id=? AND contact_phone=?', [customerId, oldPhone]);
+  if (oldRead) {
+    const newRead = get('SELECT last_read_id FROM chat_reads WHERE customer_id=? AND contact_phone=?', [customerId, newPhone]);
+    const merged = Math.max(oldRead.last_read_id || 0, newRead?.last_read_id || 0);
+    run(`INSERT INTO chat_reads (customer_id,contact_phone,last_read_id) VALUES (?,?,?)
+         ON CONFLICT(customer_id,contact_phone) DO UPDATE SET last_read_id=excluded.last_read_id`, [customerId, newPhone, merged]);
+    run('DELETE FROM chat_reads WHERE customer_id=? AND contact_phone=?', [customerId, oldPhone]);
+  }
+
+  const oldArchived = get('SELECT archived_at FROM archived_chats WHERE customer_id=? AND contact_phone=?', [customerId, oldPhone]);
+  if (oldArchived) {
+    run('INSERT OR IGNORE INTO archived_chats (customer_id,contact_phone,archived_at) VALUES (?,?,?)', [customerId, newPhone, oldArchived.archived_at]);
+    run('DELETE FROM archived_chats WHERE customer_id=? AND contact_phone=?', [customerId, oldPhone]);
+  }
+
+  const oldContact = get('SELECT id FROM contacts WHERE customer_id=? AND phone=?', [customerId, oldPhone]);
+  if (oldContact) {
+    const newContact = get('SELECT id FROM contacts WHERE customer_id=? AND phone=?', [customerId, newPhone]);
+    if (!newContact) run('UPDATE contacts SET phone=? WHERE id=?', [newPhone, oldContact.id]);
+    else run('DELETE FROM contacts WHERE id=?', [oldContact.id]);
+  }
+
+  return { moved: movedMessages };
+}
+
 function markRead(customerId, phone) {
   const last = get('SELECT MAX(id) as m FROM messages WHERE customer_id=? AND contact_phone=?', [customerId, phone])?.m || 0;
   run(`INSERT INTO chat_reads (customer_id,contact_phone,last_read_id) VALUES (?,?,?)
@@ -461,4 +499,4 @@ function cancelScheduledJob(id, customerId) {
   return true;
 }
 
-module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, isFirstQuotaWarning, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getScheduledJobForCustomer, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob, archiveChat, unarchiveChat, getArchivedPhones, deleteChatHistory, getTotalUnreadCount, addPushSubscription, removePushSubscription, getPushSubscriptions, addAuditLog, getAuditLog };
+module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, isFirstQuotaWarning, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, mergeContactPhone, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getScheduledJobForCustomer, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob, archiveChat, unarchiveChat, getArchivedPhones, deleteChatHistory, getTotalUnreadCount, addPushSubscription, removePushSubscription, getPushSubscriptions, addAuditLog, getAuditLog };

@@ -304,6 +304,18 @@ app.get('/api/admin/customers/:id/status', adminAuth, (req, res) => {
   res.json(wa.getStatus(req.params.id));
 });
 
+// LID hatası nedeniyle yanlış kaydedilmiş geçmiş sohbet verilerini onar — bkz. whatsapp.js.
+// Yalnızca o an bağlı bir müşteri için çalışır (geçmiş LID eşlemesini yalnızca canlı bağlantı bilir).
+app.post('/api/admin/customers/:id/repair-lid', adminAuth, async (req, res) => {
+  try {
+    const fixes = await wa.repairLidData(req.params.id);
+    logAdminAction(req, 'customer.repair_lid', req.params.id, { fixes_count: fixes.length, total_messages_moved: fixes.reduce((s, f) => s + f.messages_moved, 0) });
+    res.json({ ok: true, fixes });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.get('/api/admin/customers/:id/events', (req, res) => {
   // EventSource header gönderemez, query param kullan
   const token = req.headers.authorization?.split(' ')[1] || req.query.token;
