@@ -280,6 +280,7 @@ async function startConnection(customerId, method = 'qr', phoneNumber = null) {
       }
       const phone = normalizePhone(from);
       const row = db.addMessage(customerId, phone, 'in', msgType, text || null, mediaPath, mediaMimetype, msg.key.id, 'received');
+      db.unarchiveChat(customerId, phone); // Gerçek WhatsApp'ta olduğu gibi: yeni mesaj gelince arşivden kendiliğinden çıkar
       waEvents.emit(`chat_${customerId}_${phone}`, { event: 'message', ...row });
     });
   });

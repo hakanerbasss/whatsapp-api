@@ -64,6 +64,12 @@ input,textarea{font-family:inherit;}
 .cp-header .conv-info{flex:1;}
 .cp-name{font-size:15px;font-weight:700;}
 .cp-phone{font-size:11px;color:var(--muted);font-family:monospace;}
+.cp-menu-wrap{position:relative;flex-shrink:0;}
+.cp-menu{position:absolute;top:100%;right:0;margin-top:6px;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.25);min-width:170px;overflow:hidden;z-index:50;}
+.cp-menu button{display:block;width:100%;text-align:left;padding:11px 14px;background:none;border:none;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit;}
+.cp-menu button:hover{background:rgba(127,127,127,.12);}
+.archived-sep{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;background:rgba(127,127,127,.06);border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:12.5px;color:var(--muted);font-weight:700;}
+.archived-sep:hover{background:rgba(127,127,127,.1);}
 .msgs{flex:1;overflow-y:auto;padding:14px 4%;display:flex;flex-direction:column;gap:2px;}
 .bubble-row{display:flex;}
 .bubble-row.out{justify-content:flex-end;}
@@ -346,6 +352,7 @@ function avatarLetter(c) {
 }
 
 let unknownSectionOpen = false;
+let archivedSectionOpen = false;
 
 function convRowHtml(c) {
   return `
@@ -369,6 +376,11 @@ function toggleUnknownSection() {
   renderConvList();
 }
 
+function toggleArchivedSection() {
+  archivedSectionOpen = !archivedSectionOpen;
+  renderConvList();
+}
+
 function renderConvList() {
   const q = (document.getElementById('conv-search').value || '').trim().toLocaleLowerCase('tr');
   const el = document.getElementById('conv-list');
@@ -382,11 +394,17 @@ function renderConvList() {
     return;
   }
 
+  // Arşivlenmiş sohbetler (sil/arşivle menüsünden) her zaman ayrı, kapalı bir bölümde —
+  // bilinen/bilinmeyen ayrımından önce çıkarılır, gerçek WhatsApp'ta olduğu gibi yeni mesaj
+  // gelince kendiliğinden arşivden çıkıp tekrar normal listeye döner.
+  const archived = list.filter(c => c.archived);
+  const active = list.filter(c => !c.archived);
+
   // Rehbere kayıtlı olmayan numaralardan gelen mesajlar (ör. yanlış numara/istenmeyen içerik)
   // ana listeyi karıştırmasın diye ayrı, varsayılan olarak kapalı bir bölümde toplanır — kayıp
   // olmaz, okunmamış sayısı başlıkta görünür.
-  const known = list.filter(c => c.name);
-  const unknown = list.filter(c => !c.name);
+  const known = active.filter(c => c.name);
+  const unknown = active.filter(c => !c.name);
 
   let html = known.map(convRowHtml).join('');
   if (unknown.length) {
@@ -401,6 +419,18 @@ function renderConvList() {
         ${unknown.map(convRowHtml).join('')}
       </div>`;
   }
+  if (archived.length) {
+    const unreadTotal = archived.reduce((s, c) => s + (c.unread || 0), 0);
+    html += `
+      <div class="archived-sep" onclick="toggleArchivedSection()">
+        <span>🗄 Arşivlenmiş (${archived.length})</span>
+        ${unreadTotal > 0 ? `<span class="unread-badge">${unreadTotal}</span>` : ''}
+        <span style="margin-left:auto;color:var(--muted)">${archivedSectionOpen ? '▾' : '▸'}</span>
+      </div>
+      <div id="archived-list" style="display:${archivedSectionOpen ? 'block' : 'none'}">
+        ${archived.map(convRowHtml).join('')}
+      </div>`;
+  }
   el.innerHTML = html;
 }
 
@@ -408,6 +438,7 @@ function renderConvList() {
 async function openConversation(phone) {
   const conv = conversations.find(c => c.phone === phone);
   const name = conv ? conv.name : null;
+  const isArchivedNow = !!conv?.archived;
   activePhone = phone;
   activeName = name || null;
   lastMsgId = 0;
@@ -431,6 +462,13 @@ async function openConversation(phone) {
       <div class="conv-info">
         <div class="cp-name">${esc(name || phone)}</div>
         <div class="cp-phone">${esc(phone)}</div>
+      </div>
+      <div class="cp-menu-wrap">
+        <button class="icon-btn" onclick="toggleChatMenu(event)" title="Diğer"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg></button>
+        <div class="cp-menu" id="cp-menu" style="display:none">
+          <button onclick="toggleArchiveCurrentChat()" id="cp-menu-archive">${isArchivedNow ? 'Arşivden Çıkar' : 'Arşivle'}</button>
+          <button onclick="deleteCurrentChat()" style="color:var(--red)">Sohbeti Sil</button>
+        </div>
       </div>
     </div>
     <div class="msgs" id="msgs"></div>
@@ -465,6 +503,35 @@ function closeConversation() {
     convHistoryPushed = false;
     history.back();
   }
+}
+
+function toggleChatMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('cp-menu');
+  if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('cp-menu');
+  if (menu && menu.style.display !== 'none' && !e.target.closest('.cp-menu-wrap')) menu.style.display = 'none';
+});
+
+async function toggleArchiveCurrentChat() {
+  const menu = document.getElementById('cp-menu');
+  if (menu) menu.style.display = 'none';
+  const conv = conversations.find(c => c.phone === activePhone);
+  const isArchived = !!conv?.archived;
+  await api('/api/chat/' + activePhone + '/' + (isArchived ? 'unarchive' : 'archive'), { method: 'POST' });
+  closeConversation();
+  await loadConversations();
+}
+
+async function deleteCurrentChat() {
+  const menu = document.getElementById('cp-menu');
+  if (menu) menu.style.display = 'none';
+  if (!confirm('Bu sohbetin tüm mesaj geçmişi kalıcı olarak silinecek. Bu işlem geri alınamaz. Emin misiniz?')) return;
+  await api('/api/chat/' + activePhone, { method: 'DELETE' });
+  closeConversation();
+  await loadConversations();
 }
 
 async function loadHistory() {

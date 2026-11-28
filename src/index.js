@@ -953,6 +953,7 @@ app.get('/api/chat/conversations', customerAuth, (req, res) => {
   const convs = db.getConversations(req.customer.id);
   const contacts = db.getContacts(req.customer.id);
   const unread = db.getUnreadCounts(req.customer.id);
+  const archived = new Set(db.getArchivedPhones(req.customer.id));
   const nameMap = {}; contacts.forEach(c => { nameMap[c.phone] = c.name; });
   const lastMap = {}; convs.forEach(c => { lastMap[c.contact_phone] = c; });
   const unreadMap = {}; unread.forEach(u => { unreadMap[u.contact_phone] = u.unread; });
@@ -963,7 +964,8 @@ app.get('/api/chat/conversations', customerAuth, (req, res) => {
       phone, name: nameMap[phone] || null,
       last_type: last ? last.message_type : null, last_body: last ? last.body : null,
       last_direction: last ? last.direction : null, last_status: last ? last.status : null,
-      last_at: last ? last.created_at : null, unread: unreadMap[phone] || 0
+      last_at: last ? last.created_at : null, unread: unreadMap[phone] || 0,
+      archived: archived.has(phone)
     };
   });
   list.sort((a, b) => {
@@ -973,6 +975,24 @@ app.get('/api/chat/conversations', customerAuth, (req, res) => {
     return new Date(b.last_at) - new Date(a.last_at);
   });
   res.json({ ok: true, conversations: list });
+});
+
+app.post('/api/chat/:phone/archive', customerAuth, (req, res) => {
+  db.archiveChat(req.customer.id, wa.normalizePhone(req.params.phone));
+  res.json({ ok: true });
+});
+
+app.post('/api/chat/:phone/unarchive', customerAuth, (req, res) => {
+  db.unarchiveChat(req.customer.id, wa.normalizePhone(req.params.phone));
+  res.json({ ok: true });
+});
+
+app.delete('/api/chat/:phone', customerAuth, (req, res) => {
+  const phone = wa.normalizePhone(req.params.phone);
+  const mediaFiles = db.deleteChatHistory(req.customer.id, phone);
+  const mediaDir = path.join(__dirname, '../data/media', String(req.customer.id));
+  mediaFiles.forEach(filename => { try { fs.unlinkSync(path.join(mediaDir, filename)); } catch (e) {} });
+  res.json({ ok: true });
 });
 
 app.get('/api/chat/:phone', customerAuth, (req, res) => {

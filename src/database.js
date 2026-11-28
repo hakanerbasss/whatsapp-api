@@ -66,6 +66,7 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, name TEXT NOT NULL, phone TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')), UNIQUE(customer_id, phone));
     CREATE TABLE IF NOT EXISTS chat_reads (customer_id INTEGER NOT NULL, contact_phone TEXT NOT NULL, last_read_id INTEGER DEFAULT 0, PRIMARY KEY(customer_id, contact_phone));
     CREATE TABLE IF NOT EXISTS scheduled_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, message_type TEXT NOT NULL, payload TEXT NOT NULL, media_path TEXT, media_mimetype TEXT, contacts TEXT NOT NULL, batch_size INTEGER, batch_delay_ms INTEGER, message_delay_ms INTEGER NOT NULL, run_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', sent_count INTEGER DEFAULT 0, fail_count INTEGER DEFAULT 0, next_index INTEGER DEFAULT 0, error TEXT, created_at TEXT DEFAULT (datetime('now')), started_at TEXT, finished_at TEXT);
+    CREATE TABLE IF NOT EXISTS archived_chats (customer_id INTEGER NOT NULL, contact_phone TEXT NOT NULL, archived_at TEXT DEFAULT (datetime('now')), PRIMARY KEY(customer_id, contact_phone));
   `);
   saveDb();
 }
@@ -248,6 +249,28 @@ function markRead(customerId, phone) {
        ON CONFLICT(customer_id,contact_phone) DO UPDATE SET last_read_id=excluded.last_read_id`, [customerId, phone, last]);
 }
 
+// ── SOHBET: ARŞİVLE / SİL ─────────────────────────────────────────
+function archiveChat(customerId, phone) {
+  run(`INSERT INTO archived_chats (customer_id,contact_phone) VALUES (?,?)
+       ON CONFLICT(customer_id,contact_phone) DO UPDATE SET archived_at=datetime('now')`, [customerId, phone]);
+}
+function unarchiveChat(customerId, phone) {
+  run('DELETE FROM archived_chats WHERE customer_id=? AND contact_phone=?', [customerId, phone]);
+}
+function getArchivedPhones(customerId) {
+  return all('SELECT contact_phone FROM archived_chats WHERE customer_id=?', [customerId]).map(r => r.contact_phone);
+}
+// Sohbet geçmişini (mesajlar, okundu bilgisi, arşiv durumu) kalıcı olarak siler.
+// Medya dosyalarının kendisi veritabanında tutulmadığı için silinen medya yollarını
+// döner — diskten silmek çağıranın (index.js) işi.
+function deleteChatHistory(customerId, phone) {
+  const mediaFiles = all('SELECT media_path FROM messages WHERE customer_id=? AND contact_phone=? AND media_path IS NOT NULL', [customerId, phone]).map(r => r.media_path);
+  run('DELETE FROM messages WHERE customer_id=? AND contact_phone=?', [customerId, phone]);
+  run('DELETE FROM chat_reads WHERE customer_id=? AND contact_phone=?', [customerId, phone]);
+  run('DELETE FROM archived_chats WHERE customer_id=? AND contact_phone=?', [customerId, phone]);
+  return mediaFiles;
+}
+
 function getUnreadCounts(customerId) {
   return all(`
     SELECT m.contact_phone, COUNT(*) as unread
@@ -298,4 +321,4 @@ function cancelScheduledJob(id, customerId) {
   return true;
 }
 
-module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob };
+module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob, archiveChat, unarchiveChat, getArchivedPhones, deleteChatHistory };

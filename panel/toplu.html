@@ -561,6 +561,9 @@ window.addEventListener('DOMContentLoaded', () => {
   const btn = document.getElementById('theme-btn');
   if (btn) btn.innerHTML = savedTheme === 'light' ? SUN_ICON : MOON_ICON;
   updateSettingsSummary();
+  restoreAccordionState('acc-rehber', true);
+  restoreAccordionState('acc-settings', false);
+  restoreAccordionState('acc-scheduled', false);
 
   const urlToken = new URLSearchParams(window.location.search).get('token');
   const savedToken = localStorage.getItem('wa_customer_token');
@@ -1016,6 +1019,20 @@ function toggleAccordion(id) {
   const isOpen = body.classList.contains('open');
   body.classList.toggle('open', !isOpen);
   if (arrow) arrow.classList.toggle('open', !isOpen);
+  try { localStorage.setItem('acc_open_' + id, (!isOpen).toString()); } catch (e) {}
+}
+
+// Sayfaya her dönüşte akordeonlar hep aynı (sabit) açık/kapalı durumla başlıyordu — son
+// bırakıldığı hal unutuluyordu. Kaydedilmiş bir tercih varsa onu, yoksa HTML'deki varsayılanı kullan.
+function restoreAccordionState(id, defaultOpen) {
+  const body = document.getElementById(id);
+  if (!body) return;
+  let saved = null;
+  try { saved = localStorage.getItem('acc_open_' + id); } catch (e) {}
+  const shouldBeOpen = saved !== null ? saved === 'true' : defaultOpen;
+  const arrow = document.getElementById('arrow-' + id);
+  body.classList.toggle('open', shouldBeOpen);
+  if (arrow) arrow.classList.toggle('open', shouldBeOpen);
 }
 
 function updateSettingsSummary() {
