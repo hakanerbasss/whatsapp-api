@@ -44,14 +44,23 @@ app.use((req, res, next) => {
 
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Basic ')) {
+    // Henüz bir deneme yapılmadı (tarayıcı ilk kez şifre soruyor) — başarısız sayılmaz.
     res.set('WWW-Authenticate', 'Basic realm="WhatsApp API Panel"');
     return res.status(401).send('Erişim için şifre gerekli');
   }
+  const lockKey = 'panel:' + getClientIp(req);
+  const lockedSeconds = checkLoginLockout(lockKey);
+  if (lockedSeconds) {
+    res.set('Retry-After', String(lockedSeconds));
+    return res.status(429).send(`Çok fazla başarısız deneme. ${Math.ceil(lockedSeconds / 60)} dakika sonra tekrar deneyin.`);
+  }
   const [user, pass] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
   if (user !== PANEL_USER || pass !== PANEL_PASS) {
+    recordLoginFailure(lockKey);
     res.set('WWW-Authenticate', 'Basic realm="WhatsApp API Panel"');
     return res.status(401).send('Kullanıcı adı veya şifre hatalı');
   }
+  recordLoginSuccess(lockKey);
   next();
 });
 
@@ -95,6 +104,49 @@ function rateLimit(req, res, next) {
   next();
 }
 
+// ── GİRİŞ DENEMESİ KORUMASI (BRUTE-FORCE) ────────────────────────
+// IP başına: 15 dakikada 5 başarısız denemeden sonra 15 dakika kilitler. Bellek içi — sunucu
+// yeniden başlarsa sıfırlanır (kabul edilebilir: bu bir DoS önleyici değil, parola tahmin
+// saldırısına karşı). nginx proxy_set_header X-Real-IP $remote_addr ile gerçek istemci IP'sini
+// taşıyor (bkz. install.sh) — Express'in trust proxy ayarına ihtiyaç duymadan onu kullanıyoruz.
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
+const loginAttempts = {}; // key -> { count, firstAttempt, lockedUntil }
+
+function getClientIp(req) {
+  return req.headers['x-real-ip'] || req.ip;
+}
+
+// Kilitliyse kalan saniyeyi, değilse null döner.
+function checkLoginLockout(key) {
+  const rec = loginAttempts[key];
+  if (rec && rec.lockedUntil && rec.lockedUntil > Date.now()) {
+    return Math.ceil((rec.lockedUntil - Date.now()) / 1000);
+  }
+  return null;
+}
+
+function recordLoginFailure(key) {
+  const now = Date.now();
+  let rec = loginAttempts[key];
+  if (!rec || now - rec.firstAttempt > LOGIN_WINDOW_MS) rec = { count: 0, firstAttempt: now, lockedUntil: 0 };
+  rec.count++;
+  if (rec.count >= LOGIN_MAX_ATTEMPTS) rec.lockedUntil = now + LOGIN_LOCKOUT_MS;
+  loginAttempts[key] = rec;
+}
+
+function recordLoginSuccess(key) { delete loginAttempts[key]; }
+
+// Bellek büyümesini sınırlamak için eski/kilidi geçmiş kayıtları periyodik temizle.
+setInterval(() => {
+  const now = Date.now();
+  for (const key of Object.keys(loginAttempts)) {
+    const rec = loginAttempts[key];
+    if ((!rec.lockedUntil || rec.lockedUntil < now) && now - rec.firstAttempt > LOGIN_WINDOW_MS) delete loginAttempts[key];
+  }
+}, 10 * 60 * 1000);
+
 // ── MIDDLEWARE ────────────────────────────────────────────────────
 function adminAuth(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
@@ -122,12 +174,23 @@ function customerAuth(req, res, next) {
   next();
 }
 
-// Dashboard için — süresi dolsa da giriş izni verir
+// Dashboard için — süresi dolsa da giriş izni verir. Müşteri panelinin "giriş" adımı bu
+// uçtan geçtiği için brute-force koruması da burada — token 128 bit olsa da savunma derinliği
+// ve aynı IP'den otomatik deneme/tarama girişimlerini önlemek için.
 function customerAuthDashboard(req, res, next) {
   const token = req.headers['x-api-token'] || req.query.token;
-  if (!token) return res.status(401).json({ error: 'API token gerekli' });
+  const lockKey = 'customer:' + getClientIp(req);
+  const lockedSeconds = checkLoginLockout(lockKey);
+  if (lockedSeconds) {
+    return res.status(429).json({
+      error: `Çok fazla başarısız deneme. ${Math.ceil(lockedSeconds / 60)} dakika sonra tekrar deneyin.`,
+      retry_after: lockedSeconds
+    });
+  }
+  if (!token) { recordLoginFailure(lockKey); return res.status(401).json({ error: 'API token gerekli' }); }
   const customer = db.getCustomerByToken(token);
-  if (!customer) return res.status(401).json({ error: 'Geçersiz token' });
+  if (!customer) { recordLoginFailure(lockKey); return res.status(401).json({ error: 'Geçersiz token' }); }
+  recordLoginSuccess(lockKey);
   req.customer = customer;
   next();
 }
@@ -147,11 +210,21 @@ app.post('/api/setup', async (req, res) => {
 
 // Admin login
 app.post('/api/admin/login', (req, res) => {
+  const lockKey = 'admin:' + getClientIp(req);
+  const lockedSeconds = checkLoginLockout(lockKey);
+  if (lockedSeconds) {
+    return res.status(429).json({
+      error: `Çok fazla başarısız giriş denemesi. ${Math.ceil(lockedSeconds / 60)} dakika sonra tekrar deneyin.`,
+      retry_after: lockedSeconds
+    });
+  }
   const { username, password } = req.body;
   const admin = db.getAdmin(username);
   if (!admin || !bcrypt.compareSync(password, admin.password)) {
+    recordLoginFailure(lockKey);
     return res.status(401).json({ error: 'Kullanıcı adı veya şifre hatalı' });
   }
+  recordLoginSuccess(lockKey);
   const token = jwt.sign({ id: admin.id, username, role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
   res.json({ ok: true, token });
 });
