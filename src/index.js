@@ -15,7 +15,18 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'whatsapp-api-secret-2024';
 
-app.use(cors());
+// Tarayıcıdan (farklı origin'den) doğrudan API çağrısı yapılabilecek adresler Ayarlar'dan
+// yönetilir (cors_origins — virgülle ayrılmış liste, "*" tamamen açar). Boşsa tarayıcı
+// kaynaklı çapraz-origin istekler reddedilir; panel sayfaları (admin/müşteri) ve
+// sunucu-sunucu/backend çağrıları (tarayıcı olmadığı için Origin başlığı taşımaz) bundan
+// etkilenmez — CORS yalnızca tarayıcıların çapraz-origin isteklerinde devreye girer.
+function corsOptionsDelegate(req, callback) {
+  const origin = req.header('Origin');
+  const allowed = (db.getSetting('cors_origins') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const ok = !origin || allowed.includes('*') || allowed.includes(origin);
+  callback(null, { origin: ok });
+}
+app.use(cors(corsOptionsDelegate));
 app.use(express.json());
 
 // ── HTTP BASIC AUTH ───────────────────────────────────────────────
@@ -272,6 +283,7 @@ app.get('/api/admin/settings', adminAuth, (req, res) => {
     contact_phone:   db.getSetting('contact_phone') || '',
     contact_email:   db.getSetting('contact_email') || '',
     contact_message: db.getSetting('contact_message') || 'Mesaj limitinize ulaştınız. Devam etmek için iletişime geçin.',
+    cors_origins:    db.getSetting('cors_origins') || '',
     packages: JSON.parse(db.getSetting('packages') || JSON.stringify([
       { id: 'basic',     name: 'Basic',     limit: 100,  price: '150₺/ay', desc: 'Küçük işletmeler için' },
       { id: 'pro',       name: 'Pro',       limit: 500,  price: '300₺/ay', desc: 'Büyüyen işletmeler için' },
@@ -282,10 +294,11 @@ app.get('/api/admin/settings', adminAuth, (req, res) => {
 
 // Ayarları kaydet
 app.post('/api/admin/settings', adminAuth, (req, res) => {
-  const { contact_phone, contact_email, contact_message, packages } = req.body;
+  const { contact_phone, contact_email, contact_message, cors_origins, packages } = req.body;
   if (contact_phone   !== undefined) db.setSetting('contact_phone',   contact_phone);
   if (contact_email   !== undefined) db.setSetting('contact_email',   contact_email);
   if (contact_message !== undefined) db.setSetting('contact_message', contact_message);
+  if (cors_origins    !== undefined) db.setSetting('cors_origins',    cors_origins);
   if (packages        !== undefined) db.setSetting('packages', JSON.stringify(packages));
   res.json({ ok: true });
 });

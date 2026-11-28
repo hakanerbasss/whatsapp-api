@@ -730,7 +730,38 @@ async function renderSettings() {
       </div>
       <button class="btn btn-primary btn-full" onclick="saveSettings()" style="display:inline-flex;align-items:center;justify-content:center;gap:6px">${ICON_SAVE} Kaydet</button>
       <div id="settings-result" style="margin-top:10px;font-size:13px"></div>
+    </div>
+
+    <!-- API Güvenliği -->
+    <div class="card">
+      <div class="card-title">🔒 API Güvenliği (CORS)</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Panel sayfaları (bu panel, Müşteri Paneli) ve sunucu-sunucu çağrıları bundan etkilenmez.
+        Bu liste yalnızca bir TARAYICIDAN, farklı bir siteden doğrudan API'ye (/api/send vb.) istek
+        atılmasına izin verir. Boş bırakırsanız tarayıcı kaynaklı çapraz-site istekler reddedilir
+        (en güvenli). Müşterinizin kendi web sitesinden API'yi doğrudan tarayıcıdan çağırması
+        gerekiyorsa o sitenin adresini buraya ekleyin.
+      </p>
+      <div class="field">
+        <label>İzinli originler (virgülle ayrılmış, örn: https://musteri-sitesi.com)</label>
+        <input type="text" id="s-cors" value="${s.cors_origins||''}" placeholder="https://site1.com, https://site2.com (* = herkese açık, önerilmez)">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="saveCorsOrigins()" style="display:inline-flex;align-items:center;justify-content:center;gap:6px">${ICON_SAVE} Kaydet</button>
+      <div id="cors-result" style="margin-top:10px;font-size:13px"></div>
     </div>`;
+}
+
+async function saveCorsOrigins() {
+  const r = await apiFetch('/api/admin/settings', {
+    method: 'POST',
+    body: JSON.stringify({ cors_origins: document.getElementById('s-cors').value.trim() })
+  });
+  const el = document.getElementById('cors-result');
+  if (r.ok) {
+    el.innerHTML = '<span style="color:var(--accent)">✅ Kaydedildi!</span>';
+  } else {
+    el.innerHTML = `<span style="color:var(--red)">❌ Hata: ${r.error}</span>`;
+  }
 }
 
 async function findByToken() {
