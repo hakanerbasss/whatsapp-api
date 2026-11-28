@@ -20,6 +20,7 @@ async function initDb() {
     db = new SQL.Database();
   }
   createTables();
+  migrate();
   setInterval(saveDb, 5000);
   return db;
 }
@@ -69,6 +70,23 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS archived_chats (customer_id INTEGER NOT NULL, contact_phone TEXT NOT NULL, archived_at TEXT DEFAULT (datetime('now')), PRIMARY KEY(customer_id, contact_phone));
     CREATE TABLE IF NOT EXISTS push_subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, endpoint TEXT UNIQUE NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')));
   `);
+  saveDb();
+}
+
+// Zaten kurulu müşterilerin veritabanında scheduled_jobs tablosu önceden var —
+// CREATE TABLE IF NOT EXISTS yeni sütunları eklemez, bu yüzden eksik sütunları
+// elle (var olanı bozmadan) ekliyoruz. install.sh dışında ekstra bir adım gerekmez,
+// sunucu her başladığında otomatik çalışır.
+function migrate() {
+  const columnAdditions = [
+    { table: 'scheduled_jobs', column: 'recurrence', ddl: 'ALTER TABLE scheduled_jobs ADD COLUMN recurrence TEXT' },
+    { table: 'scheduled_jobs', column: 'total_sent_count', ddl: 'ALTER TABLE scheduled_jobs ADD COLUMN total_sent_count INTEGER DEFAULT 0' },
+    { table: 'scheduled_jobs', column: 'total_fail_count', ddl: 'ALTER TABLE scheduled_jobs ADD COLUMN total_fail_count INTEGER DEFAULT 0' },
+  ];
+  for (const m of columnAdditions) {
+    const existing = all(`PRAGMA table_info(${m.table})`).map(c => c.name);
+    if (!existing.includes(m.column)) getDb().exec(m.ddl);
+  }
   saveDb();
 }
 
@@ -307,10 +325,11 @@ function getPushSubscriptions(customerId) {
 // veritabanına kaydedilmiş bir kuyruk olarak tutulur (bkz. src/scheduler.js).
 function createScheduledJob(data) {
   run(`INSERT INTO scheduled_jobs
-    (customer_id, message_type, payload, media_path, media_mimetype, contacts, batch_size, batch_delay_ms, message_delay_ms, run_at, status)
-    VALUES (?,?,?,?,?,?,?,?,?,?,'pending')`,
+    (customer_id, message_type, payload, media_path, media_mimetype, contacts, batch_size, batch_delay_ms, message_delay_ms, run_at, recurrence, status)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending')`,
     [data.customerId, data.messageType, JSON.stringify(data.payload || {}), data.mediaPath || null, data.mediaMimetype || null,
-     JSON.stringify(data.contacts), data.batchSize || null, data.batchDelayMs || null, data.messageDelayMs, data.runAt]);
+     JSON.stringify(data.contacts), data.batchSize || null, data.batchDelayMs || null, data.messageDelayMs, data.runAt,
+     data.recurrence ? JSON.stringify(data.recurrence) : null]);
   return get('SELECT * FROM scheduled_jobs WHERE id = last_insert_rowid()');
 }
 

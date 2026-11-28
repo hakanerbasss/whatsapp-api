@@ -848,6 +848,21 @@ app.post('/api/bulk/schedule', customerAuth, upload.single('file'), (req, res) =
     return res.status(400).json({ error: 'Zamanlama tarihi gelecekte olmalı' });
   }
 
+  // Periyodik (tekrarlanan) gönderim: gün/saat (ve haftalık için haftanın günü, aylık için
+  // ayın günü) seçilen ilk tarih/saatten türetilir — kullanıcı ayrıca bir gün/saat seçmez,
+  // "her pazartesi 02:00" gibi bir tekrar istiyorsa run_at'i öyle bir ana ayarlar.
+  let recurrence = null;
+  if (b.recurrence_type && b.recurrence_type !== 'none') {
+    if (!['daily', 'weekly', 'monthly'].includes(b.recurrence_type)) {
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'Geçersiz tekrar tipi' });
+    }
+    const d = new Date(runAtMs);
+    recurrence = { type: b.recurrence_type, hour: d.getHours(), minute: d.getMinutes() };
+    if (b.recurrence_type === 'weekly') recurrence.dayOfWeek = d.getDay();
+    if (b.recurrence_type === 'monthly') recurrence.dayOfMonth = d.getDate();
+  }
+
   const needsFile = ['image', 'video', 'document'].includes(messageType) || (messageType === 'audio' && !b.audio_url);
   if (needsFile && !req.file) return res.status(400).json({ error: 'Bu mesaj tipi için dosya gerekli' });
   if (messageType === 'location' && (b.latitude == null || b.longitude == null)) {
@@ -894,10 +909,11 @@ app.post('/api/bulk/schedule', customerAuth, upload.single('file'), (req, res) =
     batchSize,
     batchDelayMs,
     messageDelayMs,
-    runAt: new Date(runAtMs).toISOString()
+    runAt: new Date(runAtMs).toISOString(),
+    recurrence
   });
 
-  res.json({ ok: true, job: { id: job.id, run_at: job.run_at, contact_count: contacts.length, status: job.status } });
+  res.json({ ok: true, job: { id: job.id, run_at: job.run_at, contact_count: contacts.length, status: job.status, recurrence } });
 });
 
 app.get('/api/bulk/scheduled', customerAuth, (req, res) => {
@@ -913,7 +929,10 @@ app.get('/api/bulk/scheduled', customerAuth, (req, res) => {
     created_at: j.created_at,
     started_at: j.started_at,
     finished_at: j.finished_at,
-    error: j.error
+    error: j.error,
+    recurrence: j.recurrence ? JSON.parse(j.recurrence) : null,
+    total_sent_count: j.total_sent_count || 0,
+    total_fail_count: j.total_fail_count || 0
   }));
   res.json({ ok: true, jobs });
 });

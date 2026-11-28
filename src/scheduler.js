@@ -50,6 +50,44 @@ function cleanupMedia(job) {
   if (job.media_path) { try { fs.unlinkSync(job.media_path); } catch (e) {} }
 }
 
+// Periyodik (tekrarlanan) işler için bir sonraki çalışma zamanını hesaplar.
+// recurrence: { type: 'daily'|'weekly'|'monthly', hour, minute, dayOfWeek?, dayOfMonth? }
+// Takvim bileşenleriyle (setDate/setHours) ilerletiyoruz, epoch-ms toplamıyla değil —
+// böylece yaz saati geçişlerinde bile aynı yerel saat korunur (örn. "her pazartesi 02:00").
+function stepRecurrenceOnce(recurrence, from) {
+  const next = new Date(from);
+  if (recurrence.type === 'daily') {
+    next.setDate(next.getDate() + 1);
+    next.setHours(recurrence.hour, recurrence.minute, 0, 0);
+    return next;
+  }
+  if (recurrence.type === 'weekly') {
+    next.setDate(next.getDate() + 7);
+    next.setHours(recurrence.hour, recurrence.minute, 0, 0);
+    return next;
+  }
+  if (recurrence.type === 'monthly') {
+    const firstOfNextMonth = new Date(next.getFullYear(), next.getMonth() + 1, 1);
+    const lastDayOfThatMonth = new Date(firstOfNextMonth.getFullYear(), firstOfNextMonth.getMonth() + 1, 0).getDate();
+    firstOfNextMonth.setDate(Math.min(recurrence.dayOfMonth, lastDayOfThatMonth));
+    firstOfNextMonth.setHours(recurrence.hour, recurrence.minute, 0, 0);
+    return firstOfNextMonth;
+  }
+  throw new Error('Geçersiz tekrar tipi: ' + recurrence.type);
+}
+
+// Sunucu uzun süre kapalı kalmışsa (örn. birkaç gün) kaçırılan periyotları art arda
+// göndermesin diye, bulunduğumuz andan sonraki ilk uygun zamana kadar ileri sarıyoruz.
+function computeNextRun(recurrence, fromDate) {
+  let next = stepRecurrenceOnce(recurrence, fromDate);
+  const now = new Date();
+  // Günlük tekrarda sunucu yıllarca kapalı kalsa bile geleceğe ulaşabilsin diye üst sınır
+  // yüksek tutuldu (basit tarih matematiği olduğu için 20000 adım bile milisaniyeler sürer).
+  let guard = 0;
+  while (next <= now && guard < 20000) { next = stepRecurrenceOnce(recurrence, next); guard++; }
+  return next;
+}
+
 const activeJobs = new Set();
 
 async function runJob(job) {
@@ -89,14 +127,42 @@ async function runJob(job) {
       }
     }
 
-    db.updateScheduledJob(job.id, { status: 'completed', finished_at: new Date().toISOString() });
-    cleanupMedia(job);
+    finishCycle(job, { sent, fail });
   } catch (e) {
-    db.updateScheduledJob(job.id, { status: 'failed', error: e.message, finished_at: new Date().toISOString() });
-    cleanupMedia(job);
+    finishCycle(job, { error: e.message });
   } finally {
     activeJobs.delete(job.id);
   }
+}
+
+// Bir döngü bitince: tek seferlikse işi 'completed'/'failed' olarak kapatır ve medyayı siler.
+// Periyodikse bir sonraki çalışma zamanını hesaplayıp işi 'pending'e döndürür (medya SİLİNMEZ —
+// bir sonraki periyotta da lazım) ve toplam gönderim sayaçlarını biriktirir.
+function finishCycle(job, { sent, fail, error } = {}) {
+  const recurrence = job.recurrence ? JSON.parse(job.recurrence) : null;
+  const now = new Date().toISOString();
+
+  if (!recurrence) {
+    db.updateScheduledJob(job.id, error
+      ? { status: 'failed', error, finished_at: now }
+      : { status: 'completed', finished_at: now });
+    cleanupMedia(job);
+    return;
+  }
+
+  const nextRun = computeNextRun(recurrence, new Date(job.run_at));
+  db.updateScheduledJob(job.id, {
+    status: 'pending',
+    run_at: nextRun.toISOString(),
+    next_index: 0,
+    sent_count: 0,
+    fail_count: 0,
+    total_sent_count: (job.total_sent_count || 0) + (sent || 0),
+    total_fail_count: (job.total_fail_count || 0) + (fail || 0),
+    started_at: null,
+    finished_at: now,
+    error: error || null
+  });
 }
 
 let checking = false;

@@ -396,8 +396,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
           <label>Zamanlı Gönderim (opsiyonel)</label>
-          <input type="datetime-local" id="schedule-at">
+          <input type="datetime-local" id="schedule-at" onchange="updateRecurrenceHint()">
           <div style="font-size:11px;color:var(--muted);margin:4px 0 8px;line-height:1.6">Bir tarih/saat seçip "Zamanla"ya basarsanız mesaj o anda gönderilir — tarayıcıyı kapatsanız, telefon uyusa bile sunucu belirlediğiniz zamanda kendisi gönderir. Boş bırakırsanız yukarıdaki "Toplu Gönder" her zamanki gibi hemen gönderir.</div>
+          <label style="margin-top:8px">Tekrar</label>
+          <select id="recurrence-type" onchange="updateRecurrenceHint()">
+            <option value="none" selected>Tekrarlanmıyor (bir kerelik)</option>
+            <option value="daily">Her gün</option>
+            <option value="weekly">Her hafta</option>
+            <option value="monthly">Her ay</option>
+          </select>
+          <div style="font-size:11px;color:var(--muted);margin:4px 0 8px;line-height:1.6" id="recurrence-hint">Seçtiğiniz tarih/saat yalnızca ilk gönderim için kullanılır. Tekrar seçerseniz (örn. "Her hafta"), yukarıda seçtiğiniz gün ve saat kalıcı olur — mesela Pazartesi 02:00 seçip "Her hafta" işaretlerseniz her Pazartesi 02:00'de otomatik gönderilir. Bu kişiler ve mesaj değişmeden tekrar eder; durdurmak için aşağıdan iptal edebilirsiniz.</div>
           <button class="btn btn-wa btn-full" id="schedule-btn" onclick="scheduleSending()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Zamanla
           </button>
@@ -1045,6 +1053,24 @@ function updateSettingsSummary() {
     : `${delaySec}sn bekleme`;
 }
 
+const WEEKDAY_LABELS_TR = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+const RECURRENCE_DEFAULT_HINT = 'Seçtiğiniz tarih/saat yalnızca ilk gönderim için kullanılır. Tekrar seçerseniz (örn. "Her hafta"), yukarıda seçtiğiniz gün ve saat kalıcı olur — mesela Pazartesi 02:00 seçip "Her hafta" işaretlerseniz her Pazartesi 02:00\'de otomatik gönderilir. Bu kişiler ve mesaj değişmeden tekrar eder; durdurmak için aşağıdan iptal edebilirsiniz.';
+
+function updateRecurrenceHint() {
+  const type = document.getElementById('recurrence-type').value;
+  const dateVal = document.getElementById('schedule-at').value;
+  const hintEl = document.getElementById('recurrence-hint');
+  if (type === 'none' || !dateVal) { hintEl.textContent = RECURRENCE_DEFAULT_HINT; return; }
+
+  const d = new Date(dateVal);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const pattern = type === 'daily' ? `her gün ${hh}:${mm}`
+    : type === 'weekly' ? `her hafta ${WEEKDAY_LABELS_TR[d.getDay()]} ${hh}:${mm}`
+    : `her ayın ${d.getDate()}. günü ${hh}:${mm}`;
+  hintEl.textContent = `Bu mesaj ${pattern} otomatik olarak tekrar gönderilecek. Durdurmak için aşağıdan iptal edebilirsiniz.`;
+}
+
 // ── GÖNDER ───────────────────────────────────────────────────────
 async function startSending() {
   const selected = contacts.filter(c => c.selected);
@@ -1191,6 +1217,8 @@ async function scheduleSending() {
   fd.append('contacts', JSON.stringify(selected.map(c => ({ name: c.name, phone: c.phone }))));
   fd.append('run_at', runAt.toISOString());
   fd.append('message_delay_ms', document.getElementById('send-delay').value);
+  const recurrenceType = document.getElementById('recurrence-type').value;
+  if (recurrenceType !== 'none') fd.append('recurrence_type', recurrenceType);
   const batchSizeVal = document.getElementById('batch-size').value;
   if (batchSizeVal) {
     fd.append('batch_size', batchSizeVal);
@@ -1244,8 +1272,11 @@ async function scheduleSending() {
     const r = await fetch('/api/bulk/schedule', { method: 'POST', headers: { 'x-api-token': currentToken }, body: fd });
     const data = await r.json();
     if (!data.ok) throw new Error(data.error);
-    uiToast(`Zamanlandı! ${selected.length} kişiye ${runAt.toLocaleString('tr-TR')} tarihinde gönderilecek.`, 'ok');
+    const recurMsg = recurrenceType !== 'none' ? ` ve bundan sonra ${RECURRENCE_LABEL_FOR_TOAST[recurrenceType]} otomatik tekrarlanacak` : '';
+    uiToast(`Zamanlandı! ${selected.length} kişiye ${runAt.toLocaleString('tr-TR')} tarihinde gönderilecek${recurMsg}.`, 'ok');
     scheduleInput.value = '';
+    document.getElementById('recurrence-type').value = 'none';
+    updateRecurrenceHint();
     loadScheduledJobs();
   } catch (e) {
     uiToast(e.message, 'err');
@@ -1260,6 +1291,15 @@ const JOB_STATUS_COLOR = {
   pending: 'var(--accent2)', running: 'var(--yellow)', completed: 'var(--accent)', failed: 'var(--red)', cancelled: 'var(--muted)'
 };
 const JOB_TYPE_LABEL = { text: 'Metin', image: 'Resim', video: 'Video', document: 'Dosya', audio: 'Ses', location: 'Konum' };
+const RECURRENCE_LABEL_FOR_TOAST = { daily: 'her gün', weekly: 'her hafta', monthly: 'her ay' };
+const REPEAT_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>';
+
+function recurrenceLabel(r) {
+  const hh = String(r.hour).padStart(2, '0'), mm = String(r.minute).padStart(2, '0');
+  if (r.type === 'daily') return `Her gün ${hh}:${mm}`;
+  if (r.type === 'weekly') return `Her hafta ${WEEKDAY_LABELS_TR[r.dayOfWeek]} ${hh}:${mm}`;
+  return `Her ayın ${r.dayOfMonth}. günü ${hh}:${mm}`;
+}
 
 async function loadScheduledJobs() {
   try {
@@ -1281,17 +1321,23 @@ function renderScheduledJobs(jobs) {
   }
   el.innerHTML = jobs.map(j => {
     const when = new Date(j.run_at).toLocaleString('tr-TR');
+    const whenLabel = j.recurrence ? `Sonraki: ${when}` : when;
     const progress = j.status === 'pending' ? `${j.contact_count} kişi` : `${j.sent_count + j.fail_count} / ${j.contact_count} kişi${j.fail_count ? ` (${j.fail_count} başarısız)` : ''}`;
+    const totalsLine = j.recurrence && (j.total_sent_count || j.total_fail_count)
+      ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Bugüne kadar toplam ${j.total_sent_count} gönderildi${j.total_fail_count ? `, ${j.total_fail_count} başarısız` : ''}</div>` : '';
+    const statusLabel = j.recurrence && j.status === 'pending' ? 'Aktif · tekrarlanıyor' : (JOB_STATUS_LABEL[j.status] || j.status);
     return `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div>
-          <div style="font-weight:700;font-size:13px">${JOB_TYPE_LABEL[j.message_type] || j.message_type} · ${when}</div>
+          <div style="font-weight:700;font-size:13px">${JOB_TYPE_LABEL[j.message_type] || j.message_type} · ${whenLabel}</div>
+          ${j.recurrence ? `<div style="font-size:11px;color:var(--accent2);margin-top:2px;font-weight:600">${REPEAT_ICON} ${recurrenceLabel(j.recurrence)}</div>` : ''}
           <div style="font-size:11px;color:var(--muted);margin-top:2px">${progress}</div>
+          ${totalsLine}
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-          <span style="font-size:11px;font-weight:700;color:${JOB_STATUS_COLOR[j.status] || 'var(--muted)'}">${JOB_STATUS_LABEL[j.status] || j.status}</span>
-          ${j.status === 'pending' ? `<button class="icon-btn" style="width:28px;height:28px" title="İptal et" onclick="cancelScheduledJob(${j.id})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>` : ''}
+          <span style="font-size:11px;font-weight:700;color:${JOB_STATUS_COLOR[j.status] || 'var(--muted)'}">${statusLabel}</span>
+          ${j.status === 'pending' ? `<button class="icon-btn" style="width:28px;height:28px" title="${j.recurrence ? 'Tekrarı durdur' : 'İptal et'}" onclick="cancelScheduledJob(${j.id}, ${!!j.recurrence})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>` : ''}
         </div>
       </div>
       ${j.error ? `<div style="font-size:11px;color:var(--red);margin-top:6px">${j.error}</div>` : ''}
@@ -1299,8 +1345,9 @@ function renderScheduledJobs(jobs) {
   }).join('');
 }
 
-async function cancelScheduledJob(id) {
-  if (!await uiConfirm('Bu zamanlanmış gönderimi iptal etmek istiyor musunuz?', { danger: true, confirmLabel: 'İptal Et' })) return;
+async function cancelScheduledJob(id, isRecurring) {
+  const msg = isRecurring ? 'Bu periyodik gönderimi durdurmak istiyor musunuz? Bir sonraki tekrar artık gönderilmeyecek.' : 'Bu zamanlanmış gönderimi iptal etmek istiyor musunuz?';
+  if (!await uiConfirm(msg, { danger: true, confirmLabel: isRecurring ? 'Durdur' : 'İptal Et' })) return;
   try {
     const r = await fetch('/api/bulk/scheduled/' + id, { method: 'DELETE', headers: { 'x-api-token': currentToken } });
     const data = await r.json();
