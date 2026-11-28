@@ -1,8 +1,44 @@
 // src/database.js — sql.js (saf JavaScript, derleme gerekmez)
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
+
+// ── MÜŞTERİ TOKEN'INI VERİTABANINDA ŞİFRELEME ────────────────────
+// customers.token artık DÜZ METİN DEĞİL: aranabilir (WHERE token=?) olması için SHA-256 özeti
+// tutuluyor, gerçek değer ise (panelde yeniden gösterebilmek için) AES-256-GCM ile şifrelenmiş
+// halde token_enc sütununda. Anahtar TOKEN_ENC_KEY'den, o da yoksa (mevcut kurulumlar yeniden
+// yapılandırma gerektirmesin diye) zaten her kurulumda benzersiz olan JWT_SECRET'ten türetilir.
+const ENC_KEY = crypto.createHash('sha256')
+  .update(process.env.TOKEN_ENC_KEY || process.env.JWT_SECRET || 'whatsapp-api-secret-2024')
+  .digest();
+
+function hashToken(plain) { return crypto.createHash('sha256').update(plain).digest('hex'); }
+
+function encryptValue(plain) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ENC_KEY, iv);
+  const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), enc]).toString('base64');
+}
+
+function decryptValue(b64) {
+  const buf = Buffer.from(b64, 'base64');
+  const iv = buf.subarray(0, 12), tag = buf.subarray(12, 28), enc = buf.subarray(28);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', ENC_KEY, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8');
+}
+
+// customers satırındaki token_enc'i çözüp token alanına düz metni koyar — çağıranların hepsi
+// .token'ı hep düz metin olarak bekliyor, bu yüzden dönüş noktasında tek seferde hallediyoruz.
+function withDecryptedToken(row) {
+  if (row && row.token_enc) {
+    try { row.token = decryptValue(row.token_enc); } catch (e) { /* eski/bozuk veri — token hash olarak kalır */ }
+  }
+  return row;
+}
 
 const DB_PATH = path.join(__dirname, '../data/database.bin');
 const DATA_DIR = path.join(__dirname, '../data');
@@ -85,12 +121,27 @@ function migrate() {
     // SQLite ALTER TABLE ADD COLUMN ile sabit bir DEFAULT, var olan satırlara da uygulanır —
     // mevcut müşteriler ayrıca "kapalı" görünmesin diye varsayılan açık (1).
     { table: 'customers', column: 'notify_scheduled', ddl: 'ALTER TABLE customers ADD COLUMN notify_scheduled INTEGER DEFAULT 1' },
+    { table: 'customers', column: 'token_enc', ddl: 'ALTER TABLE customers ADD COLUMN token_enc TEXT' },
   ];
   for (const m of columnAdditions) {
     const existing = all(`PRAGMA table_info(${m.table})`).map(c => c.name);
     if (!existing.includes(m.column)) getDb().exec(m.ddl);
   }
+  migrateTokenEncryption();
   saveDb();
+}
+
+// Önceki sürümlerde customers.token düz metindi (32 hex karakter — uuidv4 tire'siz). Burada
+// bulunan her satırı, aranabilir SHA-256 özetine çevirip gerçek değeri token_enc'e şifreli
+// olarak taşıyoruz. Hash (64 hex) ile düz metin (32 hex) karıştırılmaz; zaten taşınmış satırlar
+// (token_enc dolu) tekrar işlenmez — sunucu her başlangıçta migrate() çalıştırsa da idempotent.
+function migrateTokenEncryption() {
+  const rows = all('SELECT id, token FROM customers WHERE token_enc IS NULL');
+  for (const row of rows) {
+    if (!row.token || row.token.length !== 32) continue; // zaten hash (64) ya da beklenmedik biçim
+    const plain = row.token;
+    getDb().run('UPDATE customers SET token=?, token_enc=? WHERE id=?', [hashToken(plain), encryptValue(plain), row.id]);
+  }
 }
 
 function createAdmin(username, password) {
@@ -103,8 +154,8 @@ function adminExists() { return (get('SELECT COUNT(*) as c FROM admins')?.c || 0
 
 function createCustomer(data) {
   const token = uuidv4().replace(/-/g,'');
-  run('INSERT INTO customers (name,email,phone,token,plan,daily_limit,expires_at,notes) VALUES (?,?,?,?,?,?,?,?)',
-    [data.name,data.email||null,data.phone||null,token,data.plan||'basic',data.daily_limit||100,data.expires_at||null,data.notes||null]);
+  run('INSERT INTO customers (name,email,phone,token,token_enc,plan,daily_limit,expires_at,notes) VALUES (?,?,?,?,?,?,?,?,?)',
+    [data.name,data.email||null,data.phone||null,hashToken(token),encryptValue(token),data.plan||'basic',data.daily_limit||100,data.expires_at||null,data.notes||null]);
   return getCustomerByToken(token);
 }
 
@@ -114,12 +165,16 @@ function getCustomers() {
     (SELECT wa_number FROM connections WHERE customer_id=c.id LIMIT 1) as wa_number,
     (SELECT COUNT(*) FROM message_logs WHERE customer_id=c.id) as total_messages,
     (SELECT count FROM daily_usage WHERE customer_id=c.id AND date=date('now')) as today_messages
-    FROM customers c ORDER BY c.created_at DESC`);
+    FROM customers c ORDER BY c.created_at DESC`).map(withDecryptedToken);
 }
 
-function getCustomerByToken(token) { return get('SELECT * FROM customers WHERE token=?',[token]); }
-function getCustomerById(id) { return get('SELECT * FROM customers WHERE id=?',[id]); }
-function updateCustomer(id,data) { const f=Object.keys(data).map(k=>`${k}=?`).join(','); run(`UPDATE customers SET ${f} WHERE id=?`,[...Object.values(data),id]); }
+function getCustomerByToken(token) { return withDecryptedToken(get('SELECT * FROM customers WHERE token=?',[hashToken(token)])); }
+function getCustomerById(id) { return withDecryptedToken(get('SELECT * FROM customers WHERE id=?',[id])); }
+function updateCustomer(id,data) {
+  const d = { ...data };
+  if (d.token !== undefined) { const plain = d.token; d.token = hashToken(plain); d.token_enc = encryptValue(plain); }
+  const f=Object.keys(d).map(k=>`${k}=?`).join(','); run(`UPDATE customers SET ${f} WHERE id=?`,[...Object.values(d),id]);
+}
 function deleteCustomer(id) { run('DELETE FROM customers WHERE id=?',[id]); }
 function toggleCustomer(id,status) { run('UPDATE customers SET status=? WHERE id=?',[status,id]); }
 
@@ -157,7 +212,7 @@ function getStats() {
   };
 }
 
-function getCustomerByPhone(phone) { return get('SELECT * FROM customers WHERE phone=?',[phone]); }
+function getCustomerByPhone(phone) { return withDecryptedToken(get('SELECT * FROM customers WHERE phone=?',[phone])); }
 
 // ── KARA LİSTE ───────────────────────────────────────────────────
 function addBlacklist(phone, name, reason = 'demo_used') {
