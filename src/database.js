@@ -65,6 +65,7 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(customer_id, contact_phone, id);
     CREATE TABLE IF NOT EXISTS contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, name TEXT NOT NULL, phone TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')), UNIQUE(customer_id, phone));
     CREATE TABLE IF NOT EXISTS chat_reads (customer_id INTEGER NOT NULL, contact_phone TEXT NOT NULL, last_read_id INTEGER DEFAULT 0, PRIMARY KEY(customer_id, contact_phone));
+    CREATE TABLE IF NOT EXISTS scheduled_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, message_type TEXT NOT NULL, payload TEXT NOT NULL, media_path TEXT, media_mimetype TEXT, contacts TEXT NOT NULL, batch_size INTEGER, batch_delay_ms INTEGER, message_delay_ms INTEGER NOT NULL, run_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', sent_count INTEGER DEFAULT 0, fail_count INTEGER DEFAULT 0, next_index INTEGER DEFAULT 0, error TEXT, created_at TEXT DEFAULT (datetime('now')), started_at TEXT, finished_at TEXT);
   `);
   saveDb();
 }
@@ -256,4 +257,45 @@ function getUnreadCounts(customerId) {
     GROUP BY m.contact_phone`, [customerId]);
 }
 
-module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts };
+// ── ZAMANLANMIŞ TOPLU GÖNDERİM ───────────────────────────────────
+// Tarayıcı kapansa/telefon uyusa bile gönderilsin diye tamamen sunucu tarafında,
+// veritabanına kaydedilmiş bir kuyruk olarak tutulur (bkz. src/scheduler.js).
+function createScheduledJob(data) {
+  run(`INSERT INTO scheduled_jobs
+    (customer_id, message_type, payload, media_path, media_mimetype, contacts, batch_size, batch_delay_ms, message_delay_ms, run_at, status)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'pending')`,
+    [data.customerId, data.messageType, JSON.stringify(data.payload || {}), data.mediaPath || null, data.mediaMimetype || null,
+     JSON.stringify(data.contacts), data.batchSize || null, data.batchDelayMs || null, data.messageDelayMs, data.runAt]);
+  return get('SELECT * FROM scheduled_jobs WHERE id = last_insert_rowid()');
+}
+
+function getScheduledJobs(customerId) {
+  return all('SELECT * FROM scheduled_jobs WHERE customer_id=? ORDER BY created_at DESC', [customerId]);
+}
+
+function getScheduledJob(id) { return get('SELECT * FROM scheduled_jobs WHERE id=?', [id]); }
+
+// Zamanı gelmiş olanları JS tarafında belirliyoruz (sql.js'in datetime() formatıyla
+// ISO string karşılaştırması güvenilir değil) — bekleyen iş sayısı küçük olduğundan sorun değil.
+function getPendingScheduledJobs() {
+  return all("SELECT * FROM scheduled_jobs WHERE status='pending'");
+}
+
+function getRunningScheduledJobs() {
+  return all("SELECT * FROM scheduled_jobs WHERE status='running'");
+}
+
+function updateScheduledJob(id, fields) {
+  const keys = Object.keys(fields);
+  if (!keys.length) return;
+  run(`UPDATE scheduled_jobs SET ${keys.map(k => k + '=?').join(',')} WHERE id=?`, [...keys.map(k => fields[k]), id]);
+}
+
+function cancelScheduledJob(id, customerId) {
+  const job = get('SELECT * FROM scheduled_jobs WHERE id=? AND customer_id=?', [id, customerId]);
+  if (!job || job.status !== 'pending') return false;
+  run("UPDATE scheduled_jobs SET status='cancelled', finished_at=datetime('now') WHERE id=?", [id]);
+  return true;
+}
+
+module.exports = { initDb, saveDb, createAdmin, getAdmin, adminExists, createCustomer, getCustomers, getCustomerByToken, getCustomerById, getCustomerByPhone, updateCustomer, deleteCustomer, toggleCustomer, upsertConnection, getConnection, checkAndIncrementUsage, logMessage, getSetting, setSetting, getStats, getTodayUsage, getTotalUsage, addBlacklist, isBlacklisted, getBlacklist, removeBlacklist, searchBlacklist, isFirstLimitExceed, addContact, bulkAddContacts, getContacts, getContactByPhone, deleteContact, clearContacts, addMessage, getMessages, updateMessageStatusByWaId, getConversations, getConversationPhones, markRead, getUnreadCounts, createScheduledJob, getScheduledJobs, getScheduledJob, getPendingScheduledJobs, getRunningScheduledJobs, updateScheduledJob, cancelScheduledJob };

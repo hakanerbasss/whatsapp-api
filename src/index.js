@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('./database');
 const wa = require('./whatsapp');
+const scheduler = require('./scheduler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -792,6 +793,120 @@ app.post('/api/send/media', customerAuth, rateLimit, upload.single('file'), asyn
 });
 
 // ═══════════════════════════════════════════════════════════════
+// ZAMANLANMIŞ TOPLU GÖNDERİM — tarayıcı kapansa/sunucu yeniden başlasa bile
+// gönderilsin diye tamamen sunucu tarafında bir kuyruk (bkz. src/scheduler.js)
+// ═══════════════════════════════════════════════════════════════
+const SCHEDULED_MEDIA_DIR = path.join(__dirname, '../data/scheduled_media');
+if (!fs.existsSync(SCHEDULED_MEDIA_DIR)) fs.mkdirSync(SCHEDULED_MEDIA_DIR, { recursive: true });
+
+app.post('/api/bulk/schedule', customerAuth, upload.single('file'), (req, res) => {
+  const b = req.body;
+  const messageType = b.message_type;
+  const validTypes = ['text', 'image', 'video', 'document', 'audio', 'location'];
+  if (!validTypes.includes(messageType)) {
+    if (req.file) fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'Geçersiz mesaj tipi' });
+  }
+
+  let contacts;
+  try { contacts = JSON.parse(b.contacts || '[]'); } catch (e) { contacts = null; }
+  if (!Array.isArray(contacts) || !contacts.length) {
+    if (req.file) fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'En az bir kişi seçilmeli' });
+  }
+  contacts = contacts
+    .map(c => ({ name: (c.name || '').toString().trim(), phone: wa.normalizePhone(c.phone || '') }))
+    .filter(c => c.name && c.phone.length >= 10);
+  if (!contacts.length) {
+    if (req.file) fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'Geçerli kişi bulunamadı' });
+  }
+
+  const runAtMs = Date.parse(b.run_at);
+  if (!runAtMs || runAtMs <= Date.now()) {
+    if (req.file) fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'Zamanlama tarihi gelecekte olmalı' });
+  }
+
+  const needsFile = ['image', 'video', 'document'].includes(messageType) || (messageType === 'audio' && !b.audio_url);
+  if (needsFile && !req.file) return res.status(400).json({ error: 'Bu mesaj tipi için dosya gerekli' });
+  if (messageType === 'location' && (b.latitude == null || b.longitude == null)) {
+    return res.status(400).json({ error: 'Konum için latitude ve longitude gerekli' });
+  }
+
+  // Mesajlar arası bekleme için spam/ban koruması olarak aynı alt sınır manuel gönderimdeki ile aynı (3sn).
+  const messageDelayMs = Math.max(3000, parseInt(b.message_delay_ms) || 3000);
+  const batchSize = parseInt(b.batch_size) || null;
+  const batchDelayMs = batchSize ? Math.max(1000, parseInt(b.batch_delay_ms) || 30000) : null;
+
+  let mediaPath = null, mediaMimetype = null;
+  if (req.file) {
+    const ext = path.extname(req.file.originalname) || '';
+    mediaPath = path.join(SCHEDULED_MEDIA_DIR, `${Date.now()}_${req.customer.id}_${Math.random().toString(36).slice(2)}${ext}`);
+    // rename yerine copy+unlink: os.tmpdir() ile data/ farklı bir bağlama noktasında olabilir
+    // (örn. konteyner ortamlarında /tmp ayrı bir tmpfs olabilir), rename o zaman EXDEV ile patlar.
+    fs.copyFileSync(req.file.path, mediaPath);
+    fs.unlinkSync(req.file.path);
+    mediaMimetype = req.file.mimetype;
+  }
+
+  const payload = {
+    text: b.text || '',
+    caption: b.caption || '',
+    filename: b.filename || req.file?.originalname || null,
+    ptt: b.ptt === 'true' || b.ptt === '1',
+    audioUrl: b.audio_url || undefined,
+    latitude: b.latitude != null ? parseFloat(b.latitude) : undefined,
+    longitude: b.longitude != null ? parseFloat(b.longitude) : undefined,
+    name: b.name || '',
+    address: b.address || '',
+    live: b.live === 'true' || b.live === '1',
+    duration_seconds: b.duration_seconds ? parseInt(b.duration_seconds) : undefined
+  };
+
+  const job = db.createScheduledJob({
+    customerId: req.customer.id,
+    messageType,
+    payload,
+    mediaPath,
+    mediaMimetype,
+    contacts,
+    batchSize,
+    batchDelayMs,
+    messageDelayMs,
+    runAt: new Date(runAtMs).toISOString()
+  });
+
+  res.json({ ok: true, job: { id: job.id, run_at: job.run_at, contact_count: contacts.length, status: job.status } });
+});
+
+app.get('/api/bulk/scheduled', customerAuth, (req, res) => {
+  const jobs = db.getScheduledJobs(req.customer.id).map(j => ({
+    id: j.id,
+    message_type: j.message_type,
+    run_at: j.run_at,
+    status: j.status,
+    sent_count: j.sent_count,
+    fail_count: j.fail_count,
+    contact_count: JSON.parse(j.contacts || '[]').length,
+    batch_size: j.batch_size,
+    created_at: j.created_at,
+    started_at: j.started_at,
+    finished_at: j.finished_at,
+    error: j.error
+  }));
+  res.json({ ok: true, jobs });
+});
+
+app.delete('/api/bulk/scheduled/:id', customerAuth, (req, res) => {
+  const job = db.getScheduledJob(req.params.id);
+  const ok = db.cancelScheduledJob(req.params.id, req.customer.id);
+  if (!ok) return res.status(400).json({ error: 'Bu iş iptal edilemez (zaten çalışıyor/bitmiş olabilir)' });
+  if (job?.media_path) { try { fs.unlinkSync(job.media_path); } catch (e) {} }
+  res.json({ ok: true });
+});
+
+// ═══════════════════════════════════════════════════════════════
 // REHBER — Toplu Mesaj ve Sohbet ekranları AYNI kişi listesini paylaşır
 // ═══════════════════════════════════════════════════════════════
 app.get('/api/contacts', customerAuth, (req, res) => {
@@ -1032,6 +1147,8 @@ app.listen(PORT, async () => {
 
   console.log('\n🔄 Bağlantılar yenileniyor...');
   await wa.restoreConnections();
+
+  scheduler.start();
   console.log('✅ Hazır!\n');
 
   // Süresi dolmuş müşterileri otomatik askıya al (her saat kontrol)

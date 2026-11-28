@@ -392,6 +392,29 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
           </select>
         </div>
         <div style="font-size:11px;color:var(--muted);line-height:1.6">Parti büyüklüğü girilirse, seçili kişiler bu sayıda gruplara bölünüp her grup arasında yukarıdaki süre kadar beklenir — örn. 500 kişiyi 150'lik partiler halinde, partiler arasında 1 dakika bekleyerek gönderebilirsiniz.</div>
+
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          <label>Zamanlı Gönderim (opsiyonel)</label>
+          <input type="datetime-local" id="schedule-at">
+          <div style="font-size:11px;color:var(--muted);margin:4px 0 8px;line-height:1.6">Bir tarih/saat seçip "Zamanla"ya basarsanız mesaj o anda gönderilir — tarayıcıyı kapatsanız, telefon uyusa bile sunucu belirlediğiniz zamanda kendisi gönderir. Boş bırakırsanız yukarıdaki "Toplu Gönder" her zamanki gibi hemen gönderir.</div>
+          <button class="btn btn-wa btn-full" id="schedule-btn" onclick="scheduleSending()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Zamanla
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zamanlanmış Gönderimler — akordeon, varsayılan kapalı, yalnızca bekleyen/geçmiş iş varsa anlamlı -->
+    <div class="accordion">
+      <div class="accordion-header" onclick="toggleAccordion('acc-scheduled')">
+        <div class="accordion-title-wrap">
+          <span class="accordion-title">Zamanlanmış Gönderimler</span>
+          <span class="accordion-summary" id="scheduled-summary">—</span>
+        </div>
+        <span class="accordion-arrow" id="arrow-acc-scheduled">▼</span>
+      </div>
+      <div class="accordion-body" id="acc-scheduled">
+        <div id="scheduled-list"><div style="text-align:center;color:var(--muted);padding:16px;font-size:13px">Yükleniyor...</div></div>
       </div>
     </div>
 
@@ -550,6 +573,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('app').style.display = 'block';
     loadContacts();
     checkWaStatus();
+    loadScheduledJobs();
   } else {
     document.getElementById('login-wrap').style.display = 'flex';
   }
@@ -570,6 +594,7 @@ async function loginWithToken() {
   document.getElementById('bn-sohbet').href = '/sohbet?token=' + token;
   loadContacts();
   checkWaStatus();
+  loadScheduledJobs();
 }
 
 async function checkWaStatus() {
@@ -1131,6 +1156,141 @@ async function startSending() {
 
   btn.disabled = false;
   btn.innerHTML = SEND_ICON + ' Toplu Gönder';
+}
+
+// ── ZAMANLI GÖNDERİM — sunucu tarafında kuyruğa alınır, tarayıcı kapansa da gönderilir ──
+async function scheduleSending() {
+  const selected = contacts.filter(c => c.selected);
+  if (!selected.length) { alert('En az bir kişi seçin'); return; }
+
+  const scheduleInput = document.getElementById('schedule-at');
+  if (!scheduleInput.value) { alert('Zamanlamak için bir tarih/saat seçin'); return; }
+  const runAt = new Date(scheduleInput.value);
+  if (isNaN(runAt.getTime()) || runAt <= new Date()) { alert('Seçtiğiniz zaman geçmişte kalıyor, ileri bir zaman seçin'); return; }
+
+  const fd = new FormData();
+  fd.append('message_type', msgType);
+  fd.append('contacts', JSON.stringify(selected.map(c => ({ name: c.name, phone: c.phone }))));
+  fd.append('run_at', runAt.toISOString());
+  fd.append('message_delay_ms', document.getElementById('send-delay').value);
+  const batchSizeVal = document.getElementById('batch-size').value;
+  if (batchSizeVal) {
+    fd.append('batch_size', batchSizeVal);
+    fd.append('batch_delay_ms', String(parseInt(document.getElementById('batch-delay').value) * 1000));
+  }
+
+  try {
+    if (msgType === 'text') {
+      const text = document.getElementById('msg-text').value;
+      if (!text) throw new Error('Mesaj boş');
+      fd.append('text', text);
+    } else if (msgType === 'audio') {
+      if (audioMode === 'url') {
+        const url = document.getElementById('audio-url').value.trim();
+        if (!url) throw new Error('Ses URL gerekli');
+        fd.append('audio_url', url);
+      } else {
+        const blob = audioMode === 'file' ? audioFileBlob : audioRecordBlob;
+        if (!blob) throw new Error(audioMode === 'file' ? 'Dosya seçilmedi' : 'Ses kaydedilmedi');
+        fd.append('file', blob, audioMode === 'file' ? (audioFileName || 'ses.mp3') : 'kayit.ogg');
+      }
+    } else if (msgType === 'location') {
+      const lat = document.getElementById('loc-lat').value;
+      const lng = document.getElementById('loc-lng').value;
+      const name = document.getElementById('loc-name').value.trim();
+      const address = document.getElementById('loc-address').value.trim();
+      if (!lat || !lng) throw new Error(locMode === 'live' ? 'Önce "Konumumu Al ve Hazırla" butonuna bas' : 'Konum seçilmedi');
+      fd.append('latitude', lat);
+      fd.append('longitude', lng);
+      fd.append('name', name);
+      fd.append('address', address);
+      if (locMode === 'live') {
+        fd.append('live', 'true');
+        fd.append('duration_seconds', document.getElementById('live-duration').value);
+      }
+    } else {
+      const fileBlob = (msgType === 'image' && imgMode === 'camera') ? camBlob : selectedFile;
+      if (!fileBlob) throw new Error(msgType === 'image' && imgMode === 'camera' ? 'Fotoğraf çekilmedi' : 'Dosya seçilmedi');
+      fd.append('file', fileBlob, msgType === 'image' && imgMode === 'camera' ? 'foto.jpg' : (selectedFile?.name || 'dosya'));
+      const caption = document.getElementById(msgType === 'image' ? 'img-caption' : 'vid-caption')?.value || '';
+      if (caption) fd.append('caption', caption);
+    }
+  } catch (e) {
+    alert('❌ ' + e.message);
+    return;
+  }
+
+  const btn = document.getElementById('schedule-btn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/bulk/schedule', { method: 'POST', headers: { 'x-api-token': currentToken }, body: fd });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+    alert(`✅ Zamanlandı! ${selected.length} kişiye ${runAt.toLocaleString('tr-TR')} tarihinde gönderilecek.`);
+    scheduleInput.value = '';
+    loadScheduledJobs();
+  } catch (e) {
+    alert('❌ ' + e.message);
+  }
+  btn.disabled = false;
+}
+
+const JOB_STATUS_LABEL = {
+  pending: 'Bekliyor', running: 'Gönderiliyor', completed: 'Tamamlandı', failed: 'Başarısız', cancelled: 'İptal edildi'
+};
+const JOB_STATUS_COLOR = {
+  pending: 'var(--accent2)', running: 'var(--yellow)', completed: 'var(--accent)', failed: 'var(--red)', cancelled: 'var(--muted)'
+};
+const JOB_TYPE_LABEL = { text: 'Metin', image: 'Resim', video: 'Video', document: 'Dosya', audio: 'Ses', location: 'Konum' };
+
+async function loadScheduledJobs() {
+  try {
+    const r = await fetch('/api/bulk/scheduled', { headers: { 'x-api-token': currentToken } });
+    const data = await r.json();
+    if (!data.ok) return;
+    renderScheduledJobs(data.jobs);
+  } catch (e) {}
+}
+
+function renderScheduledJobs(jobs) {
+  const pendingCount = jobs.filter(j => j.status === 'pending' || j.status === 'running').length;
+  document.getElementById('scheduled-summary').textContent = pendingCount > 0 ? `${pendingCount} bekliyor` : (jobs.length ? `${jobs.length} geçmiş` : 'Henüz yok');
+
+  const el = document.getElementById('scheduled-list');
+  if (!jobs.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:13px">Henüz zamanlanmış gönderim yok.</div>';
+    return;
+  }
+  el.innerHTML = jobs.map(j => {
+    const when = new Date(j.run_at).toLocaleString('tr-TR');
+    const progress = j.status === 'pending' ? `${j.contact_count} kişi` : `${j.sent_count + j.fail_count} / ${j.contact_count} kişi${j.fail_count ? ` (${j.fail_count} başarısız)` : ''}`;
+    return `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div>
+          <div style="font-weight:700;font-size:13px">${JOB_TYPE_LABEL[j.message_type] || j.message_type} · ${when}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${progress}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <span style="font-size:11px;font-weight:700;color:${JOB_STATUS_COLOR[j.status] || 'var(--muted)'}">${JOB_STATUS_LABEL[j.status] || j.status}</span>
+          ${j.status === 'pending' ? `<button class="icon-btn" style="width:28px;height:28px" title="İptal et" onclick="cancelScheduledJob(${j.id})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>` : ''}
+        </div>
+      </div>
+      ${j.error ? `<div style="font-size:11px;color:var(--red);margin-top:6px">${j.error}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function cancelScheduledJob(id) {
+  if (!confirm('Bu zamanlanmış gönderimi iptal etmek istiyor musunuz?')) return;
+  try {
+    const r = await fetch('/api/bulk/scheduled/' + id, { method: 'DELETE', headers: { 'x-api-token': currentToken } });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+    loadScheduledJobs();
+  } catch (e) {
+    alert('❌ ' + e.message);
+  }
 }
 </script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
