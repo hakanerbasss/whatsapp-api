@@ -57,13 +57,36 @@ async function initDb() {
   }
   createTables();
   migrate();
-  setInterval(saveDb, 5000);
+  // Her yazmada tüm veritabanını diske yeniden yazmak (sql.js'in doğası — artımlı değil,
+  // db.export() her seferinde komple bir kopya üretir) veritabanı büyüdükçe pahalılaşıyordu.
+  // Artık yazmalar "kirli" işaretlenip en çok ~300ms'de bir TEK seferde diske yazılıyor — art
+  // arda gelen onlarca yazma (toplu kişi/mesaj kaydı gibi) tek bir diske yazmada toplanıyor.
+  // Bu interval, dirty bayrağı yanlışlıkla set edilmeden kalırsa diye ucuz bir yedek güvence
+  // (zaten temizse hiçbir şey yapmıyor) — asıl kaydı artık flushDbIfDirty üstleniyor.
+  setInterval(flushDbIfDirty, 5000);
+  process.on('SIGINT', () => { flushDbIfDirty(); process.exit(0); });
+  process.on('SIGTERM', () => { flushDbIfDirty(); process.exit(0); });
   return db;
 }
+
+let dbDirty = false;
+let saveTimer = null;
+const SAVE_DEBOUNCE_MS = 300;
 
 function saveDb() {
   if (!db) return;
   try { fs.writeFileSync(DB_PATH, Buffer.from(db.export())); } catch(e) {}
+}
+
+function flushDbIfDirty() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  if (dbDirty) { dbDirty = false; saveDb(); }
+}
+
+function scheduleSave() {
+  dbDirty = true;
+  if (saveTimer) return;
+  saveTimer = setTimeout(flushDbIfDirty, SAVE_DEBOUNCE_MS);
 }
 
 // Yedekleme için — db.export() bellekteki ANLIK tutarlı durumu döner (dosyayı kopyalamaktan
@@ -77,7 +100,7 @@ function getDb() {
   return db;
 }
 
-function run(sql, params = []) { getDb().run(sql, params); saveDb(); }
+function run(sql, params = []) { getDb().run(sql, params); scheduleSave(); }
 
 function get(sql, params = []) {
   const stmt = getDb().prepare(sql);
