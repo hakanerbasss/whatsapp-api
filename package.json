@@ -2,6 +2,9 @@
   "name": "whatsapp-api",
   "version": "1.0.0",
   "description": "WhatsApp API Server - Multi Instance",
+  "author": "Wizaicorp <wizaicorp@gmail.com>",
+  "license": "UNLICENSED",
+  "private": true,
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
