@@ -60,6 +60,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 .type-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;}
 .type-btn{padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;font-size:13px;text-align:center;transition:all .2s;}
 .type-btn.active{background:rgba(37,211,102,.15);color:var(--accent);border-color:var(--accent);}
+.type-btn.locked{opacity:.4;cursor:not-allowed;}
 /* Upload */
 .upload-area{border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:border-color .2s;}
 .upload-area:hover{border-color:var(--accent);}
@@ -478,6 +479,7 @@ let locMode = 'normal';
 let leafletMap = null, leafletMarker = null;
 let searchTimer = null;
 let editingJobId = null;
+let editingJobType = null;
 
 // ── KONUM ────────────────────────────────────────────────────────
 function setLocType(type, el) {
@@ -764,6 +766,13 @@ function stopRecord() {
 
 // ── MESAJ TİPİ ───────────────────────────────────────────────────
 function setType(type, el) {
+  // Backend düzenlemede mesaj tipini SABİT tutuyor (bkz. PUT /api/bulk/scheduled/:id) — tipi
+  // değiştirip gönderirse istek sessizce eski tipe göre işlenir. Karışıklığı önlemek için burada
+  // da engelliyoruz; tip değiştirmek isteyen önce "İptal" edip yeniden oluşturmalı.
+  if (editingJobId && type !== editingJobType) {
+    uiToast('Düzenlerken mesaj tipi değiştirilemez. Önce "İptal"e basıp yeni bir iş oluşturun.', 'err');
+    return;
+  }
   msgType = type;
   document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
@@ -772,6 +781,12 @@ function setType(type, el) {
   });
   selectedFile = null;
   if (type === 'location') setTimeout(initLeaflet, 150);
+}
+
+function setTypeButtonsLocked(locked) {
+  document.querySelectorAll('.type-btn').forEach(b => {
+    b.classList.toggle('locked', locked && !b.classList.contains('active'));
+  });
 }
 
 function onFileSelect(prefix) {
@@ -1171,7 +1186,7 @@ async function startSending() {
         const lng = document.getElementById('loc-lng').value;
         const name = document.getElementById('loc-name').value.trim();
         const address = document.getElementById('loc-address').value.trim();
-        if (!lat || !lng) throw new Error(locMode === 'live' ? 'Önce "Konumumu Al ve Hazırla" butonuna bas' : 'Konum seçilmedi');
+        if (!lat || !lng) throw new Error('Önce haritaya tıklayın, adres arayın veya "Konumuma Git"e basın');
         const endpoint = locMode === 'live' ? '/api/send/live-location' : '/api/send/location';
         const body = { to: contact.phone, latitude: parseFloat(lat), longitude: parseFloat(lng), name, address };
         if (locMode === 'live') body.duration_seconds = parseInt(document.getElementById('live-duration').value);
@@ -1280,7 +1295,7 @@ async function scheduleSending() {
       const lng = document.getElementById('loc-lng').value;
       const name = document.getElementById('loc-name').value.trim();
       const address = document.getElementById('loc-address').value.trim();
-      if (!lat || !lng) throw new Error(locMode === 'live' ? 'Önce "Konumumu Al ve Hazırla" butonuna bas' : 'Konum seçilmedi');
+      if (!lat || !lng) throw new Error('Önce haritaya tıklayın, adres arayın veya "Konumuma Git"e basın');
       fd.append('latitude', lat);
       fd.append('longitude', lng);
       fd.append('name', name);
@@ -1482,10 +1497,12 @@ let preEditSelectedPhones = null;
 
 function startEditJob(job) {
   editingJobId = job.id;
+  editingJobType = job.message_type;
   preEditSelectedPhones = new Set(selectedPhones);
   const p = job.payload || {};
 
   setTypeByName(job.message_type);
+  setTypeButtonsLocked(true);
   if (job.message_type === 'text') {
     document.getElementById('msg-text').value = p.text || '';
   } else if (job.message_type === 'image') {
@@ -1559,6 +1576,8 @@ function startEditJob(job) {
 
 function exitEditMode() {
   editingJobId = null;
+  editingJobType = null;
+  setTypeButtonsLocked(false);
   document.getElementById('edit-banner').style.display = 'none';
   document.getElementById('schedule-btn-label').textContent = 'Zamanla';
   for (let i = contacts.length - 1; i >= 0; i--) if (contacts[i]._temp) contacts.splice(i, 1);
