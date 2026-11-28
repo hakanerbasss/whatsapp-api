@@ -1089,6 +1089,10 @@ async function startSending() {
   const selected = contacts.filter(c => c.selected);
   if (!selected.length) { uiToast('En az bir kişi seçin', 'err'); return; }
 
+  const typeLabel = { text: 'metin mesajı', image: 'fotoğraf', video: 'video', audio: 'ses mesajı', location: 'konum' }[msgType] || 'mesaj';
+  const ok = await uiConfirm(`${selected.length} kişiye ${typeLabel} gönderilecek. Onaylıyor musunuz?`, { confirmLabel: 'Gönder' });
+  if (!ok) return;
+
   const delay = parseInt(document.getElementById('send-delay').value);
   const batchSize = parseInt(document.getElementById('batch-size').value) || 0;
   const batchDelay = parseInt(document.getElementById('batch-delay').value) * 1000;
