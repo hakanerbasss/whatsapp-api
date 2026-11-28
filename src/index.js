@@ -788,7 +788,7 @@ app.post('/api/upload', customerAuth, upload.single('file'), async (req, res) =>
 
 // Medya buffer ile gönder
 app.post('/api/send/media', customerAuth, rateLimit, upload.single('file'), async (req, res) => {
-  const { to, caption, filename } = req.body;
+  const { to, caption, filename, ptt } = req.body;
   if (!to || !req.file) return res.status(400).json({ error: 'to ve file gerekli' });
 
   const allowed = db.checkAndIncrementUsage(req.customer.id, req.customer.daily_limit);
@@ -805,7 +805,7 @@ app.post('/api/send/media', customerAuth, rateLimit, upload.single('file'), asyn
     } else if (mime.startsWith('video/')) {
       content = { video: buffer, caption: caption || '' };
     } else if (mime.startsWith('audio/')) {
-      content = { audio: buffer };
+      content = await wa.buildAudioContent(req.customer.id, buffer, mime, ptt === 'true' || ptt === '1');
     } else {
       content = { document: buffer, fileName: filename || req.file.originalname, mimetype: mime };
     }
@@ -872,7 +872,9 @@ function buildSchedulePayload(b, req, existingPayload) {
     text: b.text || '',
     caption: b.caption || '',
     filename: b.filename || req.file?.originalname || existingPayload?.filename || null,
-    ptt: b.ptt === 'true' || b.ptt === '1',
+    // Düzenlemede ses yeniden kaydedilmediyse b.ptt gelmez — önceki değeri koru, aksi halde
+    // sesli mesaj sessizce normal ses dosyasına döner.
+    ptt: b.ptt !== undefined ? (b.ptt === 'true' || b.ptt === '1') : !!existingPayload?.ptt,
     audioUrl: b.audio_url || undefined,
     latitude: b.latitude != null ? parseFloat(b.latitude) : undefined,
     longitude: b.longitude != null ? parseFloat(b.longitude) : undefined,
@@ -883,7 +885,7 @@ function buildSchedulePayload(b, req, existingPayload) {
   };
 }
 
-app.post('/api/bulk/schedule', customerAuth, upload.single('file'), (req, res) => {
+app.post('/api/bulk/schedule', customerAuth, upload.single('file'), async (req, res) => {
   const b = req.body;
   const messageType = b.message_type;
 
@@ -899,13 +901,21 @@ app.post('/api/bulk/schedule', customerAuth, upload.single('file'), (req, res) =
 
   let mediaPath = null, mediaMimetype = null;
   if (req.file) {
-    const ext = path.extname(req.file.originalname) || '';
+    let buffer = fs.readFileSync(req.file.path);
+    let mimetype = req.file.mimetype;
+    // Sesli mesaj (ptt) isteniyorsa gönderim anını beklemeden şimdi gerçek OGG/Opus'a
+    // çevir — scheduler.js kaydedilmiş dosyayı aynen gönderir, dönüşüm orada tekrar yapılmaz.
+    if (messageType === 'audio') {
+      const built = await wa.buildAudioContent(req.customer.id, buffer, mimetype, b.ptt === 'true' || b.ptt === '1');
+      buffer = built.audio;
+      mimetype = built.mimetype;
+      b.ptt = built.ptt ? 'true' : 'false';
+    }
+    const ext = mimetype.includes('ogg') ? '.ogg' : (path.extname(req.file.originalname) || '');
     mediaPath = path.join(SCHEDULED_MEDIA_DIR, `${Date.now()}_${req.customer.id}_${Math.random().toString(36).slice(2)}${ext}`);
-    // rename yerine copy+unlink: os.tmpdir() ile data/ farklı bir bağlama noktasında olabilir
-    // (örn. konteyner ortamlarında /tmp ayrı bir tmpfs olabilir), rename o zaman EXDEV ile patlar.
-    fs.copyFileSync(req.file.path, mediaPath);
+    fs.writeFileSync(mediaPath, buffer);
     fs.unlinkSync(req.file.path);
-    mediaMimetype = req.file.mimetype;
+    mediaMimetype = mimetype;
   }
 
   const payload = buildSchedulePayload(b, req);
@@ -979,7 +989,7 @@ app.get('/api/bulk/scheduled/:id', customerAuth, (req, res) => {
 // Bekleyen bir işi düzenler (mesaj tipi SABİT kalır — değiştirmek isterlerse iptal edip
 // yeniden oluşturmaları gerekir). Medya dosyası, yeni bir dosya yüklenmediyse korunur.
 // Düzenleme, ilerlemeyi sıfırlayıp işi baştan 'pending' durumuna alır.
-app.put('/api/bulk/scheduled/:id', customerAuth, upload.single('file'), (req, res) => {
+app.put('/api/bulk/scheduled/:id', customerAuth, upload.single('file'), async (req, res) => {
   const existing = db.getScheduledJobForCustomer(req.params.id, req.customer.id);
   if (!existing) {
     if (req.file) fs.unlinkSync(req.file.path);
@@ -1002,13 +1012,21 @@ app.put('/api/bulk/scheduled/:id', customerAuth, upload.single('file'), (req, re
 
   let mediaPath = existing.media_path, mediaMimetype = existing.media_mimetype;
   if (req.file) {
-    const ext = path.extname(req.file.originalname) || '';
+    let buffer = fs.readFileSync(req.file.path);
+    let mimetype = req.file.mimetype;
+    if (messageType === 'audio') {
+      const built = await wa.buildAudioContent(req.customer.id, buffer, mimetype, b.ptt === 'true' || b.ptt === '1');
+      buffer = built.audio;
+      mimetype = built.mimetype;
+      b.ptt = built.ptt ? 'true' : 'false';
+    }
+    const ext = mimetype.includes('ogg') ? '.ogg' : (path.extname(req.file.originalname) || '');
     const newMediaPath = path.join(SCHEDULED_MEDIA_DIR, `${Date.now()}_${req.customer.id}_${Math.random().toString(36).slice(2)}${ext}`);
-    fs.copyFileSync(req.file.path, newMediaPath);
+    fs.writeFileSync(newMediaPath, buffer);
     fs.unlinkSync(req.file.path);
     if (existing.media_path) { try { fs.unlinkSync(existing.media_path); } catch (e) {} }
     mediaPath = newMediaPath;
-    mediaMimetype = req.file.mimetype;
+    mediaMimetype = mimetype;
   }
 
   const existingPayload = JSON.parse(existing.payload || '{}');

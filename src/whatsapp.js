@@ -72,6 +72,25 @@ function webmToOggOpus(buffer) {
   });
 }
 
+// Ses içeriğini (gerekirse ptt için WEBM→OGG/Opus dönüşümüyle) hazırlar. sendChatMessage,
+// toplu/zamanlanmış gönderim ve zamanlanmış iş oluşturma aynı mantığı kullanır — aksi halde
+// biri tarayıcı WEBM'ini "ogg" diye işaretleyip sessiz/iletilemeyen sesli mesaj üretir.
+async function buildAudioContent(customerId, buffer, mimetype, ptt) {
+  let finalBuffer = buffer;
+  let finalMimetype = mimetype;
+  let finalPtt = !!ptt;
+  if (finalPtt && finalMimetype && !finalMimetype.includes('ogg')) {
+    try {
+      finalBuffer = await webmToOggOpus(buffer);
+      finalMimetype = 'audio/ogg; codecs=opus';
+    } catch (e) {
+      console.error(`⚠️  Sesli mesaj OGG'ye dönüştürülemedi (müşteri ${customerId}), normal ses dosyası olarak gönderiliyor:`, e.message);
+      finalPtt = false; // ffmpeg yoksa/başarısızsa ptt:true + yanlış kap WhatsApp'ta sessiz kalır
+    }
+  }
+  return { audio: finalBuffer, mimetype: finalMimetype || 'audio/ogg; codecs=opus', ptt: finalPtt };
+}
+
 function fireWebhook(webhookUrl, payload) {
   if (!webhookUrl) return;
   try {
@@ -369,8 +388,6 @@ async function sendChatMessage(customerId, to, opts) {
   const phone = normalizePhone(to);
 
   let content;
-  let finalBuffer = mediaBuffer;
-  let finalMimetype = mediaMimetype;
 
   if (type === 'text') {
     content = { text: text || '' };
@@ -379,20 +396,7 @@ async function sendChatMessage(customerId, to, opts) {
   } else if (type === 'video') {
     content = { video: mediaBuffer, caption: text || '' };
   } else if (type === 'audio') {
-    let finalPtt = !!ptt;
-    // Sesli mesaj (ptt) olarak gönderilecekse WhatsApp gerçek OGG/Opus bekler — tarayıcının
-    // ürettiği WEBM'i öyleymiş gibi işaretlemek (yalnızca mimetype yazmak) çalışmaz, mesaj ya
-    // gitmez ya da karşı tarafta oynatılamaz. Gerekirse burada gerçekten dönüştürüyoruz.
-    if (finalPtt && finalMimetype && !finalMimetype.includes('ogg')) {
-      try {
-        finalBuffer = await webmToOggOpus(mediaBuffer);
-        finalMimetype = 'audio/ogg; codecs=opus';
-      } catch (e) {
-        console.error(`⚠️  Sesli mesaj OGG'ye dönüştürülemedi (müşteri ${customerId}), normal ses dosyası olarak gönderiliyor:`, e.message);
-        finalPtt = false; // ffmpeg yoksa/başarısızsa ptt:true + yanlış kap WhatsApp'ta sessiz kalır
-      }
-    }
-    content = { audio: finalBuffer, mimetype: finalMimetype || 'audio/ogg; codecs=opus', ptt: finalPtt };
+    content = await buildAudioContent(customerId, mediaBuffer, mediaMimetype, ptt);
   } else if (type === 'document') {
     content = { document: mediaBuffer, fileName: filename || 'dosya', mimetype: mediaMimetype || 'application/octet-stream' };
   } else {
@@ -447,4 +451,4 @@ function getConn(customerId) {
   return connections[customerId]?.socket || null;
 }
 
-module.exports = { startConnection, sendMessage, sendChatMessage, disconnectCustomer, getStatus, getConn, waEvents, restoreConnections, normalizePhone };
+module.exports = { startConnection, sendMessage, sendChatMessage, buildAudioContent, disconnectCustomer, getStatus, getConn, waEvents, restoreConnections, normalizePhone };

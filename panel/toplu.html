@@ -470,6 +470,7 @@ let audioMode = 'url';
 let audioFileBlob = null;
 let audioFileName = '';
 let audioRecordBlob = null;
+let audioRecordMimetype = 'audio/webm';
 let mediaRecorder = null;
 let recordChunks = [];
 let recordInterval = null;
@@ -707,6 +708,12 @@ function onAudioFileSelect() {
   preview.innerHTML = `<audio controls style="width:100%;margin-top:4px"><source src="${url}"></audio><div style="font-size:11px;color:var(--accent);margin-top:4px">✅ ${file.name} (${(file.size/1024).toFixed(0)}KB)</div>`;
 }
 
+function pickRecorderMimeType() {
+  const candidates = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+  for (const c of candidates) { if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c; }
+  return '';
+}
+
 async function toggleRecord() {
   if (mediaRecorder && mediaRecorder.state === 'recording') return;
   try {
@@ -714,11 +721,16 @@ async function toggleRecord() {
     recordChunks = [];
     audioRecordBlob = null;
     document.getElementById('rec-preview').innerHTML = '';
-    mediaRecorder = new MediaRecorder(stream);
+    const mimeType = pickRecorderMimeType();
+    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    // Tarayıcı genelde gerçekte WEBM/Opus kaydeder (gerçek OGG nadir desteklenir) — burada
+    // MediaRecorder'ın GERÇEKTE kullandığı kabı okuyoruz; sabit "ogg" etiketlemek sunucunun
+    // dönüşümü atlamasına ve sesli mesajın WhatsApp'ta sessiz/iletilemez kalmasına yol açar.
+    audioRecordMimetype = mediaRecorder.mimeType || mimeType || 'audio/webm';
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordChunks.push(e.data); };
     mediaRecorder.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
-      audioRecordBlob = new Blob(recordChunks, { type: 'audio/ogg; codecs=opus' });
+      audioRecordBlob = new Blob(recordChunks, { type: audioRecordMimetype });
       const url = URL.createObjectURL(audioRecordBlob);
       document.getElementById('rec-preview').innerHTML = `<audio controls style="width:100%;margin-top:8px"><source src="${url}"></audio><div style="font-size:11px;color:var(--accent);margin-top:4px">✅ Kayıt hazır (${(audioRecordBlob.size/1024).toFixed(0)}KB)</div>`;
       document.getElementById('rec-status').textContent = 'Kayıt tamamlandı. Göndermek için Toplu Gönder\'e bas.';
@@ -1143,6 +1155,9 @@ async function startSending() {
           const fd = new FormData();
           fd.append('file', blob, audioMode === 'file' ? (audioFileName || 'ses.mp3') : 'kayit.ogg');
           fd.append('to', contact.phone);
+          // Mikrofonla kaydedilen ses, WhatsApp'ta gerçek "sesli mesaj" balonu olarak görünsün
+          // (ptt) — dosyadan yüklenen/URL'den gelen ses normal ses dosyası olarak kalır.
+          if (audioMode === 'record') fd.append('ptt', 'true');
           const r = await fetch('/api/send/media', {
             method: 'POST',
             headers: { 'x-api-token': currentToken },
@@ -1255,7 +1270,10 @@ async function scheduleSending() {
       } else {
         const blob = audioMode === 'file' ? audioFileBlob : audioRecordBlob;
         if (!blob && !editingJobId) throw new Error(audioMode === 'file' ? 'Dosya seçilmedi' : 'Ses kaydedilmedi');
-        if (blob) fd.append('file', blob, audioMode === 'file' ? (audioFileName || 'ses.mp3') : 'kayit.ogg');
+        if (blob) {
+          fd.append('file', blob, audioMode === 'file' ? (audioFileName || 'ses.mp3') : 'kayit.ogg');
+          if (audioMode === 'record') fd.append('ptt', 'true');
+        }
       }
     } else if (msgType === 'location') {
       const lat = document.getElementById('loc-lat').value;
